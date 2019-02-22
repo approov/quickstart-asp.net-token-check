@@ -1,17 +1,12 @@
-﻿using System;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
 
 namespace NetCoreJWTAuth.App.Controllers
 {
     [Authorize]
     [Produces("application/json")]
-    [Route("api")]
+    [Route("api/test")]
     public class ApiController : Controller
     {
         private readonly IConfiguration _configuration;
@@ -21,11 +16,10 @@ namespace NetCoreJWTAuth.App.Controllers
             _configuration = configuration;
         }
 
-        [HttpGet("Test")]
-        public IActionResult Test()
+        [HttpGet]
+        public JsonResult Get()
         {
-            return Ok("Super secret content, I hope you've got clearance for this...");
+            return Json( new { message = "Super secret content, I hope you've got clearance for this..." } );
         }
-
     }
 }

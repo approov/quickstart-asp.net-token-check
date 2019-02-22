@@ -1,4 +1,4 @@
-﻿using System.Text;
+﻿using System;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -30,8 +30,8 @@ namespace NetCoreJWTAuth.App
                         ValidateAudience = false,
                         ValidateIssuer = false,
                         ValidateIssuerSigningKey = true,
-                        // IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["SecurityKey"]))
-                        IssuerSigningKey = new SymmetricSecurityKey(System.Convert.FromBase64String(_configuration["ApproovTokenSecret"]))
+                        ClockSkew = TimeSpan.FromMinutes(0),
+                        IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(_configuration["ApproovTokenSecret"]))
                     };
                 });
 

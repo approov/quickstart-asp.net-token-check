@@ -1,8 +1,15 @@
 # APPROOV ASP.Net TOKEN CHECK
 
-> **IMPORTANT:** This repository relates to Approov 1 and has not been updated to reflect the [new features](https://approov.io/docs/v2.0/changelog/) and [usage](https://approov.io/docs/v2.0/approov-usage-documentation/) of [Approov 2](https://approov.io/docs/v2.0/approov-installation/), the latest version of Approov. We will be updating the repository soon. Meanwhile, please refer to the [guide](https://approov.io/docs/v2.0/approov-usage-documentation/#migrating-from-approov-1) for migrating from Approov 1 to Approov 2.
-
 This repository demonstrates a basic integration of an Approov token check with ASP.Net Core 2.0. Thanks to Jon Hilton for [this great blog](https://jonhilton.net/security/apis/secure-your-asp.net-core-2.0-api-part-2---jwt-bearer-authentication/) which formed the basis for this example.
+
+## TOC
+
+* [Approov Validation Process](./README.md#approov-validation-process)
+* [System Clock](./README.md#system-clock)
+* [Localhost Setup](./README.md#localhost-setup)
+* [Play with the API server on Localhost](./README.md#play-with-the-api-server-on-localhost)
+* [How to Add the Approov Token Check](./README.md#how-to-add-the-approov-token-check)
+* [Production Deployment](./README.md#production-deployment)
 
 
 ## APPROOV VALIDATION PROCESS
@@ -23,6 +30,7 @@ service.
 > are separated by dots and represented in the format of `header.payload.signature`,
 > were each part is a base64-encoded string. Read more about JWT tokens [here](https://jwt.io/introduction/).
 
+[Back to TOC](./README.md#toc)
 
 
 ## SYSTEM CLOCK
@@ -31,8 +39,10 @@ In order to correctly check for the expiration times of the Approov tokens, it i
 very important that the server is synchronizing automatically the system clock
 over the network with an authoritative time source.
 
+[Back to TOC](./README.md#toc)
 
-## SETUP
+
+## LOCALHOST SETUP
 
 ### Git Clone
 
@@ -50,8 +60,10 @@ git clone https://github.com/approov/ASP.Net-Token-Check.git
 Add [this collection](https://raw.githubusercontent.com/approov/ASP.Net-Token-Check/dev/postman/approov-dotnet-example.postman_collection.json) into Postman,
 that contains some examples for valid and invalid requests.
 
+[Back to TOC](./README.md#toc)
 
-## PLAYING WITH THE API
+
+## PLAY WITH THE API SERVER ON LOCALHOST
 
 You can easily inspect the codes used in the Postman request by copy paste them
 into [this online decoder](https://jwt.io) but always strip the word `Bearer` from
@@ -115,15 +127,66 @@ As expected without providing the Approov token we also get a denied request wit
 
 Well the token is missing in this request example, therefore nothing to show you here...
 
+[Back to TOC](./README.md#toc)
 
-## HOW TO USE IN YOUR CODE
+
+## HOW TO ADD THE APPROOV TOKEN CHECK
 
 This is a simplified overview of how you can integrate the Approov Token check as
 an authorization middle-ware check in your dotnet API. Please feel free to
 [contact us](https://info.approov.io/contact-us) for further assistance in your
 integration with Approov.
 
-### Require Authentication
+### Setup Authentication
+
+Approov tokens are [JWT](https://jwt.io/) tokens and they are configured in [Startup.cs](./Startup.cs):
+
+```c#
+// file: Startup.cs
+
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateLifetime = true,
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                ClockSkew = TimeSpan.FromMinutes(0),
+                IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(_configuration["ApproovTokenSecret"]))
+            };
+        });
+
+    services.AddMvc();
+}
+```
+
+The above code is configuring the Authentication service to check the Approov Tokens
+with the Approov base64 encoded secret provided in [appsettings.json](./appsettings.json).
+
+To make the Approov Token check available we also need to configure the 
+application to use the authentication service in [Startup.cs](./Startup.cs:
+
+```c#
+// file: Startup.cs
+
+public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+{
+    app.UseAuthentication();
+
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+
+    app.UseMvcWithDefaultRoute();
+}
+```
+
+### Require Authentication by API Endpoint
 
 We need to add the `[Authorize]` attribute to get our API endpoint to have the
 check performed for the Approov Token.
@@ -142,22 +205,33 @@ public class ApiController : Controller
 }
 ```
 
-## PRODUCTION
+[Back to TOC](./README.md#toc)
+
+
+## PRODUCTION DEPLOYMENT
 
 In order to protect the communication between your mobile app and the API server
 it is important to only communicate over a secure communication channel, using HTTPS.
 
-Please bear in mind that https on its own is not enough, certificate pinning
-must be also used to pin the connection between the mobile app and the API
-server in order to prevent [Man in the Middle Attacks](https://approov.io/docs/mitm-detection.html).
-
-We do not use https and certificate pinning in this Approov integration example
+> **NOTE:** We do not use https and certificate pinning in this Approov integration example
 because we want to be able to run this demo in localhost.
 
-However in production we strongly recommend implementing
-[static pinning](https://approov.io/docs/mitm-detection.html#id1)
-or [dynamic pinning](https://approov.io/docs/mitm-detection.html#dynamic-pinning).
+However in production your mobile app will have the connection pinned to the API 
+server without the need to implement or manage it. For more details read the
+[dynamic pinning](https://approov.io/docs/latest/approov-usage-documentation/#approov-dynamic-pinning) section in our docs.
 
+### The Approov Secret
+
+In production we don't use a custom dummy secret as we do in this demo, instead 
+we need to use the same one used by the Approov Cloud service to sign the Approov 
+Tokens issued to our mobile app.
+
+We will use the [Approov CLI Tool](https://approov.io/docs/latest/approov-installation/#approov-tool) to download the [Approov secret](https://approov.io/docs/latest/approov-cli-tool-reference/#secret-command) to 
+retrieve it:
+
+```
+approov secret -get base64url
+```
 
 ### Configure the Approov Token Check
 
@@ -168,7 +242,7 @@ The Approov Token Secret bytes are stored as a base64 encoded string. To use the
 secret we must first decode it back into bytes.
 
 In a production application we need to update [appsettings.json](./appsettings.json)
-with the Approov Base64 encoded secret that you obtained from the Approov portal.
+with the Approov Base64 encoded secret that you obtained above with the Approov CLI tool:
 
 [appsettings.json](./appsettings.json):
 
@@ -179,8 +253,24 @@ with the Approov Base64 encoded secret that you obtained from the Approov portal
 
 ```
 
-Bear in mind that in a production project the [appsettings.json](./appsettings.json)
-file must be in `.gitignore`, because you do not want to commit your secret into
-your repository, and you may want to read more about that in [this article](https://blog.approov.io/is-your-mobile-app-leaking-secrets).
+> **IMPORTANT:** 
+> 
+>Bear in mind that in a production project the [appsettings.json](./appsettings.json)
+>file must be in `.gitignore`, because you do not want to commit your secret into
+>your repository, and you may want to read more about that in [this article](https://blog.approov.io/is-your-mobile-app-leaking-secrets).
 
-https://github.com/approov/ASP.Net-Token-Check/blob/dev/postman/approov-dotnet-example.postman_collection.json
+
+### The API Server Domain
+
+The Approov Cloud service needs to know what is the API server domain in order 
+to be able to issue valid tokens for your API on each mobile app attestation, 
+and for the Approov Framework in your mobile app be able to perform the 
+dynamic certificate pinning.
+
+Add it with the Approov CLI tool:
+
+```
+approov api -add api.example.com
+```
+
+[Back to TOC](./README.md#toc)

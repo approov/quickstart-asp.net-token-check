@@ -230,7 +230,7 @@ We will use the [Approov CLI Tool](https://approov.io/docs/latest/approov-instal
 retrieve it:
 
 ```
-approov secret -get base64url
+approov secret -get base64
 ```
 
 ### Configure the Approov Token Check
@@ -271,6 +271,34 @@ Add it with the Approov CLI tool:
 
 ```
 approov api -add api.example.com
+```
+
+### Test the API Server with an Approov Token signed by the Approov Cloud Service
+
+#### Get the token with:
+
+```
+ approov token -genExample api.example.com
+```
+
+#### Test the API server
+
+##### request:
+
+```
+curl -I -X GET \                                                           
+  https://api.example.com/protected/endpoint \
+  -H 'Authorization: Bearer APPROOV_TOKEN_HERE'
+```
+
+##### response:
+
+```
+HTTP/1.1 200 OK
+Date: Thu, 04 Jun 2020 16:49:18 GMT
+Content-Type: application/json; charset=utf-8
+Server: Kestrel
+Transfer-Encoding: chunked
 ```
 
 [Back to TOC](./README.md#toc)

@@ -273,12 +273,12 @@ Add it with the Approov CLI tool:
 approov api -add api.example.com
 ```
 
-### Test the API Server with an Approov Token signed by the Approov Cloud Service
+### Test the API Server with Approov Tokens signed by the Approov Cloud Service
 
-#### Get the token with:
+#### Get a Valid Approov Token with:
 
 ```
- approov token -genExample api.example.com
+approov token -genExample api.example.com
 ```
 
 #### Test the API server
@@ -288,7 +288,7 @@ approov api -add api.example.com
 ```
 curl -I -X GET \                                                           
   https://api.example.com/protected/endpoint \
-  -H 'Authorization: Bearer APPROOV_TOKEN_HERE'
+  -H 'Authorization: Bearer VALID_APPROOV_TOKEN_HERE'
 ```
 
 ##### response:
@@ -299,6 +299,32 @@ Date: Thu, 04 Jun 2020 16:49:18 GMT
 Content-Type: application/json; charset=utf-8
 Server: Kestrel
 Transfer-Encoding: chunked
+```
+
+#### Get an Invalid Approov Token with:
+
+```
+approov token -type invalid -genExample api.example.com
+```
+
+#### Test the API server
+
+##### request:
+
+```
+curl -I -X GET \                                                           
+  https://api.example.com/protected/endpoint \
+  -H 'Authorization: Bearer INVALID_APPROOV_TOKEN_HERE'
+```
+
+##### response:
+
+```
+HTTP/1.1 401 Unauthorized
+Date: Thu, 04 Jun 2020 17:23:35 GMT
+Server: Kestrel
+Content-Length: 0
+WWW-Authenticate: Bearer error="invalid_token", error_description="The signature key was not found"
 ```
 
 [Back to TOC](./README.md#toc)

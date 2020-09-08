@@ -57,7 +57,7 @@ git clone https://github.com/approov/ASP.Net-Token-Check.git
 
 ### Postman
 
-Add [this collection](https://raw.githubusercontent.com/approov/ASP.Net-Token-Check/dev/postman/approov-dotnet-example.postman_collection.json) into Postman,
+Add [this collection](https://raw.githubusercontent.com/approov/ASP.Net-Token-Check/master/postman/approov-dotnet-example.postman_collection.json) into Postman,
 that contains some examples for valid and invalid requests.
 
 [Back to TOC](./README.md#toc)
@@ -167,7 +167,7 @@ public void ConfigureServices(IServiceCollection services)
 The above code is configuring the Authentication service to check the Approov Tokens
 with the Approov base64 encoded secret provided in [appsettings.json](./appsettings.json).
 
-To make the Approov Token check available we also need to configure the 
+To make the Approov Token check available we also need to configure the
 application to use the authentication service in [Startup.cs](./Startup.cs:
 
 ```c#
@@ -216,17 +216,17 @@ it is important to only communicate over a secure communication channel, using H
 > **NOTE:** We do not use https and certificate pinning in this Approov integration example
 because we want to be able to run this demo in localhost.
 
-However in production your mobile app will have the connection pinned to the API 
+However in production your mobile app will have the connection pinned to the API
 server without the need to implement or manage it. For more details read the
 [dynamic pinning](https://approov.io/docs/latest/approov-usage-documentation/#approov-dynamic-pinning) section in our docs.
 
 ### The Approov Secret
 
-In production we don't use a custom dummy secret as we do in this demo, instead 
-we need to use the same one used by the Approov Cloud service to sign the Approov 
+In production we don't use a custom dummy secret as we do in this demo, instead
+we need to use the same one used by the Approov Cloud service to sign the Approov
 Tokens issued to our mobile app.
 
-We will use the [Approov CLI Tool](https://approov.io/docs/latest/approov-installation/#approov-tool) to download the [Approov secret](https://approov.io/docs/latest/approov-cli-tool-reference/#secret-command) to 
+We will use the [Approov CLI Tool](https://approov.io/docs/latest/approov-installation/#approov-tool) to download the [Approov secret](https://approov.io/docs/latest/approov-cli-tool-reference/#secret-command) to
 retrieve it:
 
 ```
@@ -253,8 +253,8 @@ with the Approov Base64 encoded secret that you obtained above with the Approov 
 
 ```
 
-> **IMPORTANT:** 
-> 
+> **IMPORTANT:**
+>
 >Bear in mind that in a production project the [appsettings.json](./appsettings.json)
 >file must be in `.gitignore`, because you do not want to commit your secret into
 >your repository, and you may want to read more about that in [this article](https://blog.approov.io/is-your-mobile-app-leaking-secrets).
@@ -262,9 +262,9 @@ with the Approov Base64 encoded secret that you obtained above with the Approov 
 
 ### The API Server Domain
 
-The Approov Cloud service needs to know what is the API server domain in order 
-to be able to issue valid tokens for your API on each mobile app attestation, 
-and for the Approov Framework in your mobile app be able to perform the 
+The Approov Cloud service needs to know what is the API server domain in order
+to be able to issue valid tokens for your API on each mobile app attestation,
+and for the Approov Framework in your mobile app be able to perform the
 dynamic certificate pinning.
 
 Add it with the Approov CLI tool:
@@ -286,7 +286,7 @@ approov token -genExample api.example.com
 ##### request:
 
 ```
-curl -I -X GET \                                                           
+curl -I -X GET \
   https://api.example.com/protected/endpoint \
   -H 'Authorization: Bearer VALID_APPROOV_TOKEN_HERE'
 ```
@@ -312,7 +312,7 @@ approov token -type invalid -genExample api.example.com
 ##### request:
 
 ```
-curl -I -X GET \                                                           
+curl -I -X GET \
   https://api.example.com/protected/endpoint \
   -H 'Authorization: Bearer INVALID_APPROOV_TOKEN_HERE'
 ```

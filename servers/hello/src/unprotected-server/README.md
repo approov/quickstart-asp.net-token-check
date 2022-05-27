@@ -13,7 +13,7 @@ The unprotected example is the base reference to build the [Approov protected se
 
 ## Why?
 
-To be the starting building block for the [Approov protected servers](/servers/hello/src/approov-protected-server/), that will show you how to lock down your API server to your mobile app. Please read the brief summary in the [README](/README.md#why) at the root of this repo or visit our [website](https://approov.io/product) for more details.
+To be the starting building block for the [Approov protected servers](/servers/hello/src/approov-protected-server/), that will show you how to lock down your API server to your mobile app. Please read the brief summary in the [Approov Overview](/OVERVIEW.md#why) at the root of this repo or visit our [website](https://approov.io/product) for more details.
 
 [TOC](#toc---table-of-contents)
 
@@ -64,5 +64,31 @@ Transfer-Encoding: chunked
 
 {"message":"Hello, World!"}
 ```
+
+[TOC](#toc---table-of-contents)
+
+
+## Issues
+
+If you find any issue while following our instructions then just report it [here](https://github.com/approov/quickstart-asp.net-token-check/issues), with the steps to reproduce it, and we will sort it out and/or guide you to the correct path.
+
+
+[TOC](#toc---table-of-contents)
+
+
+## Useful Links
+
+If you wish to explore the Approov solution in more depth, then why not try one of the following links as a jumping off point:
+
+* [Approov Free Trial](https://approov.io/signup)(no credit card needed)
+* [Approov Get Started](https://approov.io/product/demo)
+* [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
+* [Approov Docs](https://approov.io/docs)
+* [Approov Blog](https://approov.io/blog/)
+* [Approov Resources](https://approov.io/resource/)
+* [Approov Customer Stories](https://approov.io/customer)
+* [Approov Support](https://approov.io/contact)
+* [About Us](https://approov.io/company)
+* [Contact Us](https://approov.io/contact)
 
 [TOC](#toc---table-of-contents)

@@ -257,7 +257,7 @@ with the Approov Base64 encoded secret that you obtained above with the Approov 
 >
 >Bear in mind that in a production project the [appsettings.json](./appsettings.json)
 >file must be in `.gitignore`, because you do not want to commit your secret into
->your repository, and you may want to read more about that in [this article](https://blog.approov.io/is-your-mobile-app-leaking-secrets).
+>your repository, and you may want to read more about that in [this article](https://approov.io/blog//is-your-mobile-app-leaking-secrets).
 
 
 ### The API Server Domain

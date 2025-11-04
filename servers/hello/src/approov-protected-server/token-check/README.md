@@ -58,6 +58,31 @@ Edit the `.env` file and add the [dummy secret](/TESTING.md#the-dummy-secret) to
 
 [TOC](#toc---table-of-contents)
 
+## Message Signing Configuration
+
+After the Approov token is validated the API can optionally verify an [Approov Message Signing](https://approov.io/docs/latest/approov-usage-documentation/#installation-message-signing) signature. Configure the behaviour in `appsettings.json`:
+
+```jsonc
+"Approov": {
+  "MessageSigningMode": "Installation",   // None | Installation | Account
+  "AccountMessageBaseSecret": "",         // Required when Account mode is selected
+  "MessageSigningMaxAgeSeconds": 300,      // Reject signatures older than this age
+  "RequireSignatureNonce": false,          // Enforce nonce presence if you track replay protection
+  "SignedHeaders": [
+    "Approov-Token",
+    "Content-Type"
+  ]
+}
+```
+
+* **None** — message signing checks are skipped and only the token is validated.
+* **Installation** — expects an `ipk` claim in the Approov token. The middleware extracts the Elliptic Curve public key and verifies an ECDSA P-256/SHA-256 signature over the canonical request representation (HTTP method, path + query, configured headers and body hash when present).
+* **Account** — derives a per-token HMAC key using the configured base secret, the device ID (`did` claim) and token expiry. The base secret can be provided in base64 or base32 form exactly as exported by `approov secret -messageSigningKey`.
+
+The canonical message always includes the `Approov-Token` header to prevent replay. If the client supplies a [`Signature-Input`](https://www.rfc-editor.org/rfc/rfc9421) header its declared components are honoured; otherwise the server falls back to the `SignedHeaders` list. Set `MessageSigningMaxAgeSeconds` and `RequireSignatureNonce` to mirror your policy for timestamp freshness and nonce enforcement.
+
+[TOC](#toc---table-of-contents)
+
 
 ## Try the Approov Integration Example
 
@@ -85,6 +110,12 @@ Server: Kestrel
 The reason you got a `401` is because the Approoov token isn't provided in the headers of the request.
 
 Finally, you can test that the Approov integration example works as expected with this [Postman collection](/TESTING.md#testing-with-postman) or with some cURL requests [examples](/TESTING.md#testing-with-curl).
+
+Run the automated unit tests with:
+
+```bash
+dotnet test ../../../../tests/Hello.Tests/Hello.Tests.csproj
+```
 
 [TOC](#toc---table-of-contents)
 

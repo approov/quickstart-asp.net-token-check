@@ -25,11 +25,10 @@ public class MessageSigningUtilitiesTests
         context.Request.Body = new MemoryStream(bodyBytes);
         context.Request.ContentLength = bodyBytes.Length;
 
-        var canonicalBytes = await MessageSigningUtilities.BuildCanonicalMessageAsync(
+        var canonical = await MessageSigningUtilities.BuildCanonicalMessageAsync(
             context.Request,
             new[] { "Approov-Token", "Custom-Header" });
 
-        var canonical = Encoding.UTF8.GetString(canonicalBytes);
         var bodyHash = Convert.ToBase64String(SHA256.HashData(bodyBytes));
         var expected = string.Join('\n', new[]
         {
@@ -40,7 +39,11 @@ public class MessageSigningUtilitiesTests
             bodyHash
         });
 
-        Assert.Equal(expected, canonical);
+        Assert.Equal(expected, canonical.Payload);
+        Assert.Equal(bodyHash, canonical.BodyHashBase64);
+        Assert.Equal("POST", canonical.Method);
+        Assert.Equal("/api/test?q=1", canonical.PathAndQuery);
+        Assert.Equal("token123", canonical.Headers["approov-token"]);
     }
 
     [Fact]
@@ -125,7 +128,7 @@ public class MessageSigningMiddlewareTests
         var canonicalMessage = await MessageSigningUtilities.BuildCanonicalMessageAsync(context.Request, headerNames);
 
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var signature = Convert.ToBase64String(ecdsa.SignData(canonicalMessage, HashAlgorithmName.SHA256));
+        var signature = Convert.ToBase64String(ecdsa.SignData(canonicalMessage.PayloadBytes, HashAlgorithmName.SHA256));
         var publicKey = Convert.ToBase64String(ecdsa.ExportSubjectPublicKeyInfo());
 
         var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -193,7 +196,7 @@ public class MessageSigningMiddlewareTests
         var canonicalMessage = await MessageSigningUtilities.BuildCanonicalMessageAsync(context.Request, headerNames);
         var derivedSecret = MessageSigningUtilities.DeriveSecret(baseSecret, deviceId, tokenExpiry);
         using var hmac = new HMACSHA256(derivedSecret);
-        var signature = Convert.ToBase64String(hmac.ComputeHash(canonicalMessage));
+        var signature = Convert.ToBase64String(hmac.ComputeHash(canonicalMessage.PayloadBytes));
 
         var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         context.Request.Headers["Signature-Input"] = "sig1=(\"@method\" \"@path\" \"approov-token\" \"content-type\");created=" + created;

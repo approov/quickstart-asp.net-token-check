@@ -13,6 +13,16 @@ The quickstart was tested with the following Operating Systems:
 * MacOS Big Sur
 * Windows 10 WSL2 - Ubuntu 20.04
 
+### Running the sample APIs without Docker
+
+The repository now ships with a helper script that launches the demo servers directly with the local .NET SDK. From the repository root run:
+
+```bash
+./scripts/run-local.sh all
+```
+
+This starts the unprotected, token-check and token-binding examples on ports `8001`, `8002` and `8003` respectively. Press `Ctrl+C` to stop them. You can also launch an individual backend, for example `./scripts/run-local.sh token-check`. The script will automatically create a `.env` file from `.env.example` for the Approov-protected projects if one is not already present.
+
 First, setup the [Approov CLI](https://approov.io/docs/latest/approov-installation/index.html#initializing-the-approov-cli).
 
 Now, register the API domain for which Approov will issues tokens:

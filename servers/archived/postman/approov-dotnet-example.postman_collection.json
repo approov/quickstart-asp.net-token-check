@@ -128,6 +128,68 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "message signing",
+			"description": "Examples showing how to call the Approov-protected endpoint with message signing headers. Populate the collection variables `approov_token`, `signature_input`, and `message_signature` before sending.",
+			"item": [
+				{
+					"name": "Approov Token with message signature",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Approov-Token",
+								"type": "text",
+								"value": "{{approov_token}}"
+							},
+							{
+								"key": "Signature-Input",
+								"type": "text",
+								"value": "{{signature_input}}"
+							},
+							{
+								"key": "Signature",
+								"type": "text",
+								"value": "{{message_signature}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "http://localhost:8002/",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8002",
+							"path": [
+								""
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "approov_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "signature_input",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "message_signature",
+			"value": "",
+			"type": "string"
 		}
 	]
 }

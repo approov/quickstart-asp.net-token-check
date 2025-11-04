@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Hello.Helpers;
 
@@ -48,7 +49,12 @@ if (messageSigningMode == MessageSigningMode.Account && accountMessageBaseSecret
 }
 
 var configuredSignedHeaders = approovSection.GetSection("SignedHeaders").Get<string[]>() ?? Array.Empty<string>();
+var messageSigningHeaderNames = NormalizeSignedHeaders(configuredSignedHeaders);
 var messageSigningMaxAgeSeconds = approovSection.GetValue<int?>("MessageSigningMaxAgeSeconds") ?? 300;
+if (messageSigningMaxAgeSeconds < 0)
+{
+    throw new InvalidOperationException("Approov:MessageSigningMaxAgeSeconds cannot be negative.");
+}
 var requireSignatureNonce = approovSection.GetValue<bool?>("RequireSignatureNonce") ?? false;
 
 builder.Services.Configure<AppSettings>(appSettings =>
@@ -56,7 +62,7 @@ builder.Services.Configure<AppSettings>(appSettings =>
     appSettings.ApproovSecretBytes = approovSecretBytes;
     appSettings.MessageSigningMode = messageSigningMode;
     appSettings.AccountMessageBaseSecretBytes = accountMessageBaseSecretBytes;
-    appSettings.MessageSigningHeaderNames = configuredSignedHeaders;
+    appSettings.MessageSigningHeaderNames = messageSigningHeaderNames;
     appSettings.MessageSigningMaxAgeSeconds = messageSigningMaxAgeSeconds;
     appSettings.RequireSignatureNonce = requireSignatureNonce;
 });
@@ -156,4 +162,13 @@ static byte[] DecodeBase32(string encodedSecret)
     }
 
     return output.ToArray();
+}
+
+static string[] NormalizeSignedHeaders(IEnumerable<string> headers)
+{
+    return headers
+        .Where(header => !string.IsNullOrWhiteSpace(header))
+        .Select(header => header.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 }

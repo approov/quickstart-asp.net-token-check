@@ -1,14 +1,25 @@
 namespace Hello.Helpers;
 
+using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 
+public sealed record CanonicalMessage(
+    string Method,
+    string PathAndQuery,
+    IReadOnlyDictionary<string, string> Headers,
+    string? BodyHashBase64,
+    byte[] PayloadBytes)
+{
+    public string Payload => Encoding.UTF8.GetString(PayloadBytes);
+}
+
 public static class MessageSigningUtilities
 {
-    public static async Task<byte[]> BuildCanonicalMessageAsync(HttpRequest request, IEnumerable<string> headerNames)
+    public static async Task<CanonicalMessage> BuildCanonicalMessageAsync(HttpRequest request, IEnumerable<string> headerNames)
     {
         var orderedHeaders = headerNames
             .Select(name => name.Trim())
@@ -17,18 +28,19 @@ public static class MessageSigningUtilities
             .Distinct()
             .ToList();
 
+        var method = request.Method.ToUpperInvariant();
+        var pathAndQuery = BuildPathAndQuery(request);
+        var headerMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var parts = new List<string>
         {
-            request.Method.ToUpperInvariant(),
-            BuildPathAndQuery(request)
+            method,
+            pathAndQuery
         };
 
         foreach (var headerName in orderedHeaders)
         {
             if (!request.Headers.TryGetValue(headerName, out var values))
             {
-                // HeaderDictionary is case-insensitive, but TryGetValue requires the original case.
-                // If a lowercase lookup fails, attempt using the original casing by enumerating the dictionary.
                 var match = request.Headers.FirstOrDefault(pair => string.Equals(pair.Key, headerName, StringComparison.OrdinalIgnoreCase));
                 values = match.Value;
             }
@@ -37,17 +49,20 @@ public static class MessageSigningUtilities
                 ? string.Join(", ", values.Select(v => v.Trim()))
                 : string.Empty;
 
+            headerMap[headerName] = canonicalValue;
             parts.Add($"{headerName}:{canonicalValue}");
         }
 
         var bodyHash = await ComputeBodyHashAsync(request).ConfigureAwait(false);
+        string? bodyHashBase64 = null;
         if (bodyHash != null)
         {
-            parts.Add(Convert.ToBase64String(bodyHash));
+            bodyHashBase64 = Convert.ToBase64String(bodyHash);
+            parts.Add(bodyHashBase64);
         }
 
-        var canonical = string.Join('\n', parts);
-        return Encoding.UTF8.GetBytes(canonical);
+        var payloadBytes = Encoding.UTF8.GetBytes(string.Join('\n', parts));
+        return new CanonicalMessage(method, pathAndQuery, headerMap, bodyHashBase64, payloadBytes);
     }
 
     public static bool VerifyInstallationSignature(byte[] message, string signature, string publicKeyBase64)

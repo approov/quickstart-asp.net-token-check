@@ -53,7 +53,7 @@ public class MessageSigningVerifierTests
         var context = new DefaultHttpContext();
         context.Request.Method = "GET";
         context.Request.Scheme = "http";
-        context.Request.Host = new HostString("0.0.0.0", 8002);
+        context.Request.Host = new HostString("0.0.0.0", 8111);
         context.Request.Path = "/token";
         context.Request.QueryString = new QueryString("?param1=value1&param2=value2");
         context.Request.Headers["Approov-Token"] = ApproovToken;

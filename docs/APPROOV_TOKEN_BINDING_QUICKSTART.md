@@ -23,7 +23,7 @@ To lock down your API server to your mobile app. Please read the brief summary i
 
 For more background, see the [Approov Overview](/OVERVIEW.md#how-it-works) at the root of this repo.
 
-Take a look at the `verifyApproovToken()` function at the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-bindingcheck/Middleware/ApproovTokenMiddleware.cs) class to see the simple code for the Approov Token check. To also see the code for the Approov token binding check you just need to look for the `verifyApproovTokenBinding()` function at the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-bindingcheck/Middleware/ApproovTokenBindingMiddleware.cs) class.
+Take a look at the `verifyApproovToken()` function at the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs) class to see the simple code for the Approov Token check. To also see the code for the Approov token binding check you just need to look for the `VerifyApproovTokenBinding()` function at the [ApproovTokenBindingMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenBindingMiddleware.cs) class.
 
 [TOC](#toc---table-of-contents)
 
@@ -118,6 +118,18 @@ public class AppSettings
 }
 ```
 
+Add a helper to keep context item keys in one place:
+
+```c#
+namespace AppName.Helpers;
+
+public static class ApproovTokenContextKeys
+{
+    public const string TokenBinding = "ApproovTokenBinding";
+    public const string TokenBindingVerified = "ApproovTokenBindingVerified";
+}
+```
+
 Now, add the `ApproovTokenMiddleware` class to your project:
 
 ```c#
@@ -182,8 +194,10 @@ public class ApproovTokenMiddleware
             var claims = jwtToken.Claims;
 
             var payClaim = claims.FirstOrDefault(x => x.Type == "pay")?.Value;
-
-            context.Items["ApproovTokenBinding"] = payClaim;
+            if (!string.IsNullOrWhiteSpace(payClaim))
+            {
+                context.Items[ApproovTokenContextKeys.TokenBinding] = payClaim;
+            }
 
             return true;
         } catch (SecurityTokenException exception) {
@@ -202,81 +216,66 @@ Next, add the `ApproovTokenBindingMiddleware` class:
 ```c#
 namespace AppName.Middleware;
 
-using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
+using System.Text;
 using AppName.Helpers;
-
 
 public class ApproovTokenBindingMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly AppSettings _appSettings;
     private readonly ILogger<ApproovTokenBindingMiddleware> _logger;
 
-    public ApproovTokenBindingMiddleware(RequestDelegate next, IOptions<AppSettings> appSettings, ILogger<ApproovTokenBindingMiddleware> logger)
+    public ApproovTokenBindingMiddleware(RequestDelegate next, ILogger<ApproovTokenBindingMiddleware> logger)
     {
         _next = next;
-        _appSettings = appSettings.Value;
         _logger = logger;
     }
 
     public async Task Invoke(HttpContext context)
     {
-        var tokenBinding = context.Items["ApproovTokenBinding"]?.ToString();
+        var tokenBinding = context.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var bindingValue)
+            ? bindingValue as string
+            : null;
 
-        if (tokenBinding == null) {
-            _logger.LogInformation("The pay claim is missing in the Approov token.");
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            return;
-        }
-
-        var authorizationToken = context.Request.Headers["Authorization"].FirstOrDefault();
-
-        if (authorizationToken == null) {
-            _logger.LogInformation("Missing the Authorization token header to use for the Approov token binding.");
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            return;
-        }
-
-        if (verifyApproovTokenBinding(authorizationToken, tokenBinding)) {
+        if (string.IsNullOrWhiteSpace(tokenBinding))
+        {
             await _next(context);
             return;
         }
 
-        _logger.LogInformation("Invalid Approov token binding.");
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return;
+        var authorizationToken = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(authorizationToken))
+        {
+            _logger.LogInformation("Approov token binding requested but Authorization header is missing.");
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        if (!VerifyApproovTokenBinding(authorizationToken, tokenBinding))
+        {
+            _logger.LogInformation("Invalid Approov token binding.");
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
+        context.Items[ApproovTokenContextKeys.TokenBindingVerified] = true;
+        await _next(context);
     }
 
-    private bool verifyApproovTokenBinding(string authorizationToken, string tokenBinding)
+    private static bool VerifyApproovTokenBinding(string authorizationToken, string tokenBinding)
     {
-        var hash = sha256Base64Endoded(authorizationToken);
-
-        StringComparer comparer = StringComparer.OrdinalIgnoreCase;
-
-        return comparer.Compare(tokenBinding, hash) == 0;
+        var computedHash = Sha256Base64Encoded(authorizationToken);
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(tokenBinding),
+            Encoding.UTF8.GetBytes(computedHash));
     }
 
-    public static string sha256Base64Endoded(string input)
+    private static string Sha256Base64Encoded(string input)
     {
-        try
-        {
-            SHA256 sha256 = SHA256.Create();
-
-            byte[] inputBytes = new UTF8Encoding().GetBytes(input);
-            byte[] hashBytes = sha256.ComputeHash(inputBytes);
-
-            sha256.Dispose();
-
-            return Convert.ToBase64String(hashBytes);
-        }
-        catch (Exception ex)
-        {
-            throw new Exception(ex.Message, ex);
-        }
+        using var sha256 = SHA256.Create();
+        var inputBytes = Encoding.UTF8.GetBytes(input);
+        var hashBytes = sha256.ComputeHash(inputBytes);
+        return Convert.ToBase64String(hashBytes);
     }
 }
 ```

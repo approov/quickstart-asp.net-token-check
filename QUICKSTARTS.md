@@ -5,11 +5,11 @@
 
 ## The Quickstarts
 
-The quickstart code for the Approov backend server is split into two implementations. The first gets you up and running with basic token checking. The second uses a more advanced Approov feature, _token binding_. Token binding may be used to link the Approov token with other properties of the request, such as user authentication (more details can be found [here](https://approov.io/docs/latest/approov-usage-documentation/#token-binding)).
+The quickstart code for the Approov backend server now lives in a single implementation (`servers/hello/src/approov-protected-server/token-check`). The core quickstart focuses on basic token checking, while the token binding guide extends the same project to showcase the optional binding feature (more details can be found [here](https://approov.io/docs/latest/approov-usage-documentation/#token-binding)).
 * [Approov token check quickstart](/docs/APPROOV_TOKEN_QUICKSTART.md)
 * [Approov token check with token binding quickstart](/docs/APPROOV_TOKEN_BINDING_QUICKSTART.md)
 
-Both the quickstarts are built from the unprotected example server defined [here](servers/hello/src/unprotected-server).
+Both guides build upon the unprotected example server defined [here](servers/hello/src/unprotected-server).
 
 
 ## Issues

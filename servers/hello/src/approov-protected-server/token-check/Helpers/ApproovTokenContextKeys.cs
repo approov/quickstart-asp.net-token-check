@@ -7,4 +7,5 @@ public static class ApproovTokenContextKeys
     public const string TokenExpiry = "ApproovTokenExpiry";
     public const string InstallationPublicKey = "ApproovInstallationPublicKey";
     public const string TokenBinding = "ApproovTokenBinding";
+    public const string TokenBindingVerified = "ApproovTokenBindingVerified";
 }

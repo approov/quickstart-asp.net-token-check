@@ -19,16 +19,8 @@ services:
 
   approov-token-check:
     <<: *dotnet-service
-    command: dotnet run --urls http://0.0.0.0:8002
+    command: dotnet run --urls http://0.0.0.0:8111
     ports:
-      - ${HOST_IP:-127.0.0.1}:8002:8002
+      - ${HOST_IP:-127.0.0.1}:8111:8111
     volumes:
       - ./servers/hello/src/approov-protected-server/token-check:/home/developer/workspace
-
-  approov-token-binding-check:
-    <<: *dotnet-service
-    command: dotnet run --urls http://0.0.0.0:8003
-    ports:
-      - ${HOST_IP:-127.0.0.1}:8003:8003
-    volumes:
-      - ./servers/hello/src/approov-protected-server/token-binding-check:/home/developer/workspace

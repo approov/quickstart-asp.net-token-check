@@ -7,7 +7,7 @@ HELLO_ROOT="${ROOT_DIR}/servers/hello/src"
 
 print_usage() {
   cat <<'EOF'
-Usage: scripts/run-local.sh [unprotected|token-check|token-binding|all]
+Usage: scripts/run-local.sh [unprotected|token-check|all]
 
 Runs the sample APIs directly with the local dotnet SDK, avoiding Docker.
 For Approov-protected apps the script ensures a .env file exists by copying
@@ -19,7 +19,6 @@ project_dir_for() {
   case "$1" in
     unprotected) printf '%s\n' "${HELLO_ROOT}/unprotected-server" ;;
     token-check) printf '%s\n' "${HELLO_ROOT}/approov-protected-server/token-check" ;;
-    token-binding) printf '%s\n' "${HELLO_ROOT}/approov-protected-server/token-binding-check" ;;
     *) return 1 ;;
   esac
 }
@@ -28,7 +27,6 @@ project_port_for() {
   case "$1" in
     unprotected) printf '8001\n' ;;
     token-check) printf '8111\n' ;;
-    token-binding) printf '8003\n' ;;
     *) return 1 ;;
   esac
 }
@@ -73,7 +71,7 @@ run_all() {
 
   trap 'echo "Stopping services..."; for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done; wait || true' INT TERM
 
-  for key in unprotected token-check token-binding; do
+  for key in unprotected token-check; do
     project_dir="$(project_dir_for "${key}")" || {
       echo "Unknown project key '${key}'" >&2
       exit 1
@@ -103,7 +101,7 @@ main() {
   fi
 
   case "$1" in
-    unprotected|token-check|token-binding)
+    unprotected|token-check)
       run_project "$1"
       ;;
     all)

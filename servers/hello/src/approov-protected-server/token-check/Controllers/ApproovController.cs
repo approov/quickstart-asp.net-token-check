@@ -32,19 +32,11 @@ public class ApproovController : ControllerBase
             ? value as string
             : null;
 
-        if (string.IsNullOrWhiteSpace(payClaim))
-        {
-            return Unauthorized();
-        }
+        var bindingVerified = HttpContext.Items.TryGetValue(ApproovTokenContextKeys.TokenBindingVerified, out var verifiedValue)
+            && verifiedValue is bool verifiedFlag
+            && verifiedFlag;
 
-        var combinedBinding = BuildBindingValue(new[] { "Authorization", "X-Device-Id" });
-        if (!combinedBinding.Success)
-        {
-            return Unauthorized();
-        }
-
-        var computedHash = ComputeSha256Base64(combinedBinding.Value);
-        if (!HashesMatch(payClaim, computedHash))
+        if (string.IsNullOrWhiteSpace(payClaim) || !bindingVerified)
         {
             return Unauthorized();
         }
@@ -212,33 +204,4 @@ public class ApproovController : ControllerBase
         return builder.ToString();
     }
 
-    private (bool Success, string Value) BuildBindingValue(IEnumerable<string> headerNames)
-    {
-        var builder = new StringBuilder();
-        foreach (var headerName in headerNames)
-        {
-            if (!Request.Headers.TryGetValue(headerName, out var values) || values.Count == 0)
-            {
-                return (false, string.Empty);
-            }
-
-            builder.Append(CombineHeaderValues(values));
-        }
-
-        return (true, builder.ToString());
-    }
-
-    private static string ComputeSha256Base64(string input)
-    {
-        var bytes = Encoding.UTF8.GetBytes(input);
-        var hash = SHA256.HashData(bytes);
-        return Convert.ToBase64String(hash);
-    }
-
-    private static bool HashesMatch(string expectedBase64, string actualBase64)
-    {
-        var expectedBytes = Encoding.UTF8.GetBytes(expectedBase64);
-        var actualBytes = Encoding.UTF8.GetBytes(actualBase64);
-        return CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
-    }
 }

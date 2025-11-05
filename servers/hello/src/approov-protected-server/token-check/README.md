@@ -20,7 +20,7 @@ To lock down your API server to your mobile app. Please read the brief summary i
 
 ## How it works?
 
-The sample API mirrors the OpenResty/Lua reference implementation. It lives at [src/approov-protected-server/token-check](src/approov-protected-server/token-check) and exposes the following endpoints:
+The sample API mirrors the OpenResty/Lua reference implementation. It lives at [src/approov-protected-server/token-check](src/approov-protected-server/token-check), and consolidates the token check, token binding, and message signing examples into a single project. It exposes the following endpoints:
 
 * `/hello` – plain text check that the service is alive.
 * `/token` – validates the Approov token and, when the `ipk` claim is present, verifies the Approov installation message signature. Success returns `Good Token`; failures return a `401` with `Invalid Token`.
@@ -28,7 +28,7 @@ The sample API mirrors the OpenResty/Lua reference implementation. It lives at [
 * `/ipk_message_sign_test` – accepts a `private-key` (base64 DER) and a `msg` (base64 canonical message) header and returns an ECDSA P-256/SHA-256 raw signature. The Lua scripts call this to create deterministic signatures.
 * `/sfv_test` – parses and reserialises Structured Field Value headers. The OpenResty quickstart invokes this when running `request_tests_sfv.sh`.
 
-Approov tokens are validated by the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs). Message signing is enforced by [MessageSigningMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/MessageSigningMiddleware.cs) which shares the same canonical string construction, structured field parsing, and ECDSA verification logic as the Lua quickstart.
+Approov tokens are validated by the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs). Token binding is enforced by the [ApproovTokenBindingMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenBindingMiddleware.cs), and message signing is handled by [MessageSigningMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/MessageSigningMiddleware.cs) which shares the same canonical string construction, structured field parsing, and ECDSA verification logic as the Lua quickstart.
 
 For more background on Approov, see the [Approov Overview](/OVERVIEW.md#how-it-works) at the root of this repo.
 
@@ -61,32 +61,32 @@ Edit the `.env` file and add the [dummy secret](/TESTING.md#the-dummy-secret) to
 
 ## Try the Approov Integration Example
 
-The quickest way to bring up all sample backends (unprotected, token-check, token-binding) is:
+The quickest way to bring up the sample backends (unprotected and Approov-protected) is:
 
 ```bash
 ./scripts/run-local.sh all
 ```
 
-The Lua quickstart scripts expect the token-check server on `http://0.0.0.0:8002`. Once the service is running you can execute the shell helpers that ship with the OpenResty repo, for example:
+The Lua quickstart scripts expect the token-check server on `http://0.0.0.0:8111`. Once the service is running you can execute the shell helpers that ship with the OpenResty repo, for example:
 
 ```bash
-./request_tests_approov_msg.sh 8002
-./request_tests_sfv.sh 8002
+./request_tests_approov_msg.sh 8111
+./request_tests_sfv.sh 8111
 ```
 
 The commands above exercise the `/token`, `/ipk_message_sign_test`, `/ipk_test` and `/sfv_test` endpoints in exactly the same way as the Lua environment. You can also interact with the endpoints manually:
 
 ```bash
 # basic token check (replace with a valid Approov token)
-curl -H "Approov-Token: <token>" http://localhost:8002/token
+curl -H "Approov-Token: <token>" http://localhost:8111/token
 
 # generate a deterministic signature for a canonical message
 curl -H "private-key: <base64 DER EC private key>" \
      -H "msg: <base64 canonical message>" \
-     http://localhost:8002/ipk_message_sign_test
+     http://localhost:8111/ipk_message_sign_test
 
 # verify Structured Field Value parsing
-curl -H "sfv:?1;param=123" -H "sfvt:ITEM" http://localhost:8002/sfv_test
+curl -H "sfv:?1;param=123" -H "sfvt:ITEM" http://localhost:8111/sfv_test
 ```
 
 Run the automated unit tests with:

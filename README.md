@@ -21,7 +21,7 @@ The repository now ships with a helper script that launches the demo servers dir
 ./scripts/run-local.sh all
 ```
 
-This starts the unprotected, token-check and token-binding examples on ports `8001`, `8002` and `8003` respectively. Press `Ctrl+C` to stop them. You can also launch an individual backend, for example `./scripts/run-local.sh token-check`. The script will automatically create a `.env` file from `.env.example` for the Approov-protected projects if one is not already present.
+This starts the unprotected sample on port `8001` and the consolidated Approov-protected sample on port `8111`. Press `Ctrl+C` to stop them. You can also launch an individual backend, for example `./scripts/run-local.sh token-check`. The script will automatically create a `.env` file from `.env.example` for the Approov-protected project if one is not already present.
 
 First, setup the [Approov CLI](https://approov.io/docs/latest/approov-installation/index.html#initializing-the-approov-cli).
 

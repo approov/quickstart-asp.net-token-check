@@ -49,6 +49,7 @@ if (app.Environment.IsDevelopment())
 // app.UseHttpsRedirection();
 
 app.UseMiddleware<Hello.Middleware.ApproovTokenMiddleware>();
+app.UseMiddleware<Hello.Middleware.ApproovTokenBindingMiddleware>();
 app.UseMiddleware<Hello.Middleware.MessageSigningMiddleware>();
 
 app.UseAuthorization();

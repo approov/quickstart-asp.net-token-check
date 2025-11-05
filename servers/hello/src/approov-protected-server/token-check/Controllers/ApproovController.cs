@@ -57,7 +57,7 @@ public class ApproovController : ControllerBase
             var publicKeyBase64 = Convert.ToBase64String(publicKeyDer);
             //_logger.LogDebug("Generated EC key pair for testing. Private DER (b64)={Private} Public DER (b64)={Public}", privateKeyBase64, publicKeyBase64);
 
-            return Content("No IPK header, generated keys logged", "text/plain");
+            return Content("No IPK header provided", "text/plain");
         }
 
         try

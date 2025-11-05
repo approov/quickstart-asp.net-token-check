@@ -216,7 +216,7 @@ public class ApproovTokenMiddleware
 ```
 
 Next, add the `ApproovTokenBindingMiddleware` class:
-
+//TODO: This needs to be updated to reflect current code. 
 ```c#
 namespace AppName.Middleware;
 

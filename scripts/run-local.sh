@@ -27,7 +27,7 @@ project_dir_for() {
 project_port_for() {
   case "$1" in
     unprotected) printf '8001\n' ;;
-    token-check) printf '8002\n' ;;
+    token-check) printf '8111\n' ;;
     token-binding) printf '8003\n' ;;
     *) return 1 ;;
   esac

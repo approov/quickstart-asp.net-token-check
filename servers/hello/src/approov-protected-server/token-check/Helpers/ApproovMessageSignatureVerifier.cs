@@ -202,12 +202,12 @@ public sealed class ApproovMessageSignatureVerifier
         }
         catch (FormatException ex)
         {
-            _logger.LogInformation("DebugLogToRemove: invalid public key format - {Message}", ex.Message);
+            _logger.LogWarning("Invalid public key format - {Message}", ex.Message);
             return false;
         }
         catch (CryptographicException ex)
         {
-            _logger.LogInformation("DebugLogToRemove: cryptographic failure - {Message}", ex.Message);
+            _logger.LogError(ex, "Cryptographic failure during signature verification");
             return false;
         }
     }

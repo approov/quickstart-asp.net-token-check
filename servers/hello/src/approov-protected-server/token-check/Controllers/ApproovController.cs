@@ -1,8 +1,9 @@
-using System.Security.Cryptography;
-using System.Text;
 using Hello.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using StructuredFieldValues;
+using System.Security.Cryptography;
+using System.Text;
+using System.Collections.Generic;
 
 namespace Hello.Controllers;
 
@@ -24,6 +25,33 @@ public class ApproovController : ControllerBase
     [HttpPost("/token")]
     public IActionResult Token() => Content("Good Token", "text/plain");
 
+    [HttpGet("/token_binding")]
+    public IActionResult TokenBinding()
+    {
+        var payClaim = HttpContext.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var value)
+            ? value as string
+            : null;
+
+        if (string.IsNullOrWhiteSpace(payClaim))
+        {
+            return Unauthorized();
+        }
+
+        var combinedBinding = BuildBindingValue(new[] { "Authorization", "X-Device-Id" });
+        if (!combinedBinding.Success)
+        {
+            return Unauthorized();
+        }
+
+        var computedHash = ComputeSha256Base64(combinedBinding.Value);
+        if (!HashesMatch(payClaim, computedHash))
+        {
+            return Unauthorized();
+        }
+
+        return Content("Good Token Binding", "text/plain");
+    }
+
     [HttpGet("/ipk_test")]
     public IActionResult IpkTest()
     {
@@ -36,7 +64,7 @@ public class ApproovController : ControllerBase
 
             var privateKeyBase64 = Convert.ToBase64String(privateKeyDer);
             var publicKeyBase64 = Convert.ToBase64String(publicKeyDer);
-            _logger.LogInformation("DebugLogToRemove: Generated EC key pair for testing. Private DER (b64)={Private} Public DER (b64)={Public}", privateKeyBase64, publicKeyBase64);
+            _logger.LogDebug("Generated EC key pair for testing. Private DER (b64)={Private} Public DER (b64)={Public}", privateKeyBase64, publicKeyBase64);
 
             return Content("No IPK header, generated keys logged", "text/plain");
         }
@@ -50,7 +78,7 @@ public class ApproovController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("DebugLogToRemove: Failed to import IPK header - {Message}", ex.Message);
+            _logger.LogWarning("Failed to import IPK header - {Message}", ex.Message);
             Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Content("Failed: failed to create public key", "text/plain");
         }
@@ -80,13 +108,13 @@ public class ApproovController : ControllerBase
         }
         catch (FormatException ex)
         {
-            _logger.LogInformation("DebugLogToRemove: Invalid input for signing - {Message}", ex.Message);
+            _logger.LogWarning("Invalid input for signing - {Message}", ex.Message);
             Response.StatusCode = StatusCodes.Status400BadRequest;
             return Content("Failed to generate signature", "text/plain");
         }
         catch (CryptographicException ex)
         {
-            _logger.LogInformation("DebugLogToRemove: Cryptographic failure during signing - {Message}", ex.Message);
+            _logger.LogError(ex, "Cryptographic failure during signing");
             Response.StatusCode = StatusCodes.Status400BadRequest;
             return Content("Failed to generate signature", "text/plain");
         }
@@ -114,7 +142,7 @@ public class ApproovController : ControllerBase
                 error = SfvParser.ParseItem(sfvHeader, out var item);
                 if (error.HasValue)
                 {
-                    return StructuredFieldFailure(error.Value.Message);
+            return StructuredFieldFailure(error.Value.Message);
                 }
                 serialized = StructuredFieldFormatter.SerializeItem(item);
                 break;
@@ -141,7 +169,7 @@ public class ApproovController : ControllerBase
 
         if (!string.Equals(serialized, sfvHeader, StringComparison.Ordinal))
         {
-            return StructuredFieldFailure("Serialized object does not match original");
+            return StructuredFieldFailure($"Serialized object does not match original: {serialized} != {sfvHeader}");
         }
 
         return Content("SFV roundtrip OK", "text/plain");
@@ -149,7 +177,7 @@ public class ApproovController : ControllerBase
 
     private IActionResult StructuredFieldFailure(string message)
     {
-        _logger.LogInformation("DebugLogToRemove: Structured field roundtrip failure - {Message}", message);
+            _logger.LogDebug("Structured field roundtrip failure - {Message}", message);
         Response.StatusCode = StatusCodes.Status401Unauthorized;
         return Content("Failed SFV roundtrip", "text/plain");
     }
@@ -178,5 +206,35 @@ public class ApproovController : ControllerBase
         }
 
         return builder.ToString();
+    }
+
+    private (bool Success, string Value) BuildBindingValue(IEnumerable<string> headerNames)
+    {
+        var builder = new StringBuilder();
+        foreach (var headerName in headerNames)
+        {
+            if (!Request.Headers.TryGetValue(headerName, out var values) || values.Count == 0)
+            {
+                return (false, string.Empty);
+            }
+
+            builder.Append(CombineHeaderValues(values));
+        }
+
+        return (true, builder.ToString());
+    }
+
+    private static string ComputeSha256Base64(string input)
+    {
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToBase64String(hash);
+    }
+
+    private static bool HashesMatch(string expectedBase64, string actualBase64)
+    {
+        var expectedBytes = Encoding.UTF8.GetBytes(expectedBase64);
+        var actualBytes = Encoding.UTF8.GetBytes(actualBase64);
+        return CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
     }
 }

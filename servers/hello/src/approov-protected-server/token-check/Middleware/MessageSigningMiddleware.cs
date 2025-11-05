@@ -37,13 +37,13 @@ public class MessageSigningMiddleware
         var result = await _verifier.VerifyAsync(context, installationPublicKey);
         if (!result.Success)
         {
-            _logger.LogInformation("DebugLogToRemove: message signing verification failed: {Reason}", result.Error);
+            _logger.LogWarning("Message signing verification failed: {Reason}", result.Error);
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsync("Invalid Token");
             return;
         }
 
-        _logger.LogDebug("DebugLogToRemove: message signature verified");
+        _logger.LogDebug("Message signature verified");
         await _next(context);
     }
 

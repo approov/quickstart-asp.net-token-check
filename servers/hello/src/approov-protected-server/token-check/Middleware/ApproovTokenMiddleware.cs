@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using Hello.Helpers;
+using System.Security.Claims;
 
 public class ApproovTokenMiddleware
 {
@@ -20,10 +21,17 @@ public class ApproovTokenMiddleware
 
     public async Task Invoke(HttpContext context)
     {
+        var path = context.Request.Path.Value;
+        if (IsBypassedPath(path))
+        {
+            await _next(context);
+            return;
+        }
+
         var token = context.Request.Headers["Approov-Token"].FirstOrDefault();
 
         if (token == null) {
-            _logger.LogInformation("Missing Approov-Token header.");
+            _logger.LogDebug("Missing Approov-Token header.");
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
@@ -53,13 +61,60 @@ public class ApproovTokenMiddleware
                 ClockSkew = TimeSpan.Zero
             }, out SecurityToken validatedToken);
 
+            if (validatedToken is JwtSecurityToken jwtToken)
+            {
+                context.Items[ApproovTokenContextKeys.ApproovToken] = jwtToken;
+                context.Items[ApproovTokenContextKeys.TokenExpiry] = jwtToken.ValidTo;
+
+                var claims = jwtToken.Claims;
+                var deviceId = claims.FirstOrDefault(c => string.Equals(c.Type, "did", StringComparison.OrdinalIgnoreCase))?.Value;
+                if (!string.IsNullOrWhiteSpace(deviceId))
+                {
+                    context.Items[ApproovTokenContextKeys.DeviceId] = deviceId;
+                }
+
+                var payClaim = claims.FirstOrDefault(c => string.Equals(c.Type, "pay", StringComparison.OrdinalIgnoreCase))?.Value;
+                if (!string.IsNullOrWhiteSpace(payClaim))
+                {
+                    context.Items[ApproovTokenContextKeys.TokenBinding] = payClaim;
+                }
+
+                var installationPublicKey = claims.FirstOrDefault(c => string.Equals(c.Type, "ipk", StringComparison.OrdinalIgnoreCase))?.Value;
+                if (!string.IsNullOrWhiteSpace(installationPublicKey))
+                {
+                    context.Items[ApproovTokenContextKeys.InstallationPublicKey] = installationPublicKey;
+                }
+            }
+
             return true;
-        } catch (SecurityTokenException exception) {
-            _logger.LogInformation(exception.Message);
+        } catch (SecurityTokenExpiredException) {
+            _logger.LogDebug("Approov token rejected: expired");
+            return false;
+        } catch (SecurityTokenNoExpirationException) {
+            _logger.LogDebug("Approov token rejected: missing expiration");
+            return false;
+        } catch (SecurityTokenInvalidSignatureException) {
+            _logger.LogDebug("Approov token rejected: invalid signature");
+            return false;
+        } catch (SecurityTokenException) {
+            _logger.LogDebug("Approov token rejected: failed validation");
             return false;
         } catch (Exception exception) {
-            _logger.LogInformation(exception.Message);
+            _logger.LogError(exception, "Unexpected error during Approov token validation");
             return false;
         }
+    }
+
+    private static bool IsBypassedPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        return path.Equals("/sfv_test", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/ipk_test", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/ipk_message_sign_test", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/hello", StringComparison.OrdinalIgnoreCase);
     }
 }

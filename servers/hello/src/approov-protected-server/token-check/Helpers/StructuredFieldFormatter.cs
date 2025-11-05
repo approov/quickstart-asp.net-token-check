@@ -13,21 +13,7 @@ public static class StructuredFieldFormatter
         var builder = new StringBuilder();
         builder.Append(SerializeBareItem(item.Value));
 
-        if (item.Parameters is { Count: > 0 })
-        {
-            foreach (var parameter in item.Parameters)
-            {
-                builder.Append(';');
-                builder.Append(parameter.Key);
-                if (parameter.Value is bool boolean && boolean)
-                {
-                    continue;
-                }
-
-                builder.Append('=');
-                builder.Append(SerializeBareItem(parameter.Value));
-            }
-        }
+        AppendParameters(builder, item.Parameters);
 
         return builder.ToString();
     }
@@ -47,21 +33,7 @@ public static class StructuredFieldFormatter
         }
 
         builder.Append(')');
-        if (parameters is { Count: > 0 })
-        {
-            foreach (var parameter in parameters)
-            {
-                builder.Append(';');
-                builder.Append(parameter.Key);
-                if (parameter.Value is bool boolean && boolean)
-                {
-                    continue;
-                }
-
-                builder.Append('=');
-                builder.Append(SerializeBareItem(parameter.Value));
-            }
-        }
+        AppendParameters(builder, parameters);
 
         return builder.ToString();
     }
@@ -95,9 +67,9 @@ public static class StructuredFieldFormatter
 
             builder.Append(entry.Key);
 
-            // Bare item with boolean true is encoded without explicit value.
-            if (entry.Value.Value is bool boolean && boolean && (entry.Value.Parameters == null || entry.Value.Parameters.Count == 0))
+            if (entry.Value.Value is bool boolean && boolean)
             {
+                AppendParameters(builder, entry.Value.Parameters);
                 first = false;
                 continue;
             }
@@ -132,6 +104,10 @@ public static class StructuredFieldFormatter
                 return SerializeDisplayString(display);
             case ReadOnlyMemory<byte> bytes:
                 return ":" + Convert.ToBase64String(bytes.ToArray()) + ":";
+            case DateTime dateTime:
+                return SerializeDateTime(dateTime);
+            case DateTimeOffset dateTimeOffset:
+                return SerializeDateTime(dateTimeOffset.UtcDateTime);
             case IReadOnlyList<ParsedItem> innerList:
                 return SerializeInnerList(innerList, null);
             default:
@@ -161,7 +137,7 @@ public static class StructuredFieldFormatter
         var text = displayString.ToString();
         var bytes = Encoding.UTF8.GetBytes(text);
         var builder = new StringBuilder();
-        builder.Append('%');
+        builder.Append("%\"");
 
         foreach (var b in bytes)
         {
@@ -173,10 +149,39 @@ public static class StructuredFieldFormatter
             else
             {
                 builder.Append('%');
-                builder.Append(b.ToString("X2", CultureInfo.InvariantCulture));
+                builder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
             }
         }
 
+        builder.Append('"');
         return builder.ToString();
+    }
+
+    private static string SerializeDateTime(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
+        var seconds = new DateTimeOffset(utc).ToUnixTimeSeconds();
+        return "@" + seconds.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static void AppendParameters(StringBuilder builder, IReadOnlyDictionary<string, object>? parameters)
+    {
+        if (parameters is not { Count: > 0 })
+        {
+            return;
+        }
+
+        foreach (var parameter in parameters)
+        {
+            builder.Append(';');
+            builder.Append(parameter.Key);
+            if (parameter.Value is bool boolean && boolean)
+            {
+                continue;
+            }
+
+            builder.Append('=');
+            builder.Append(SerializeBareItem(parameter.Value));
+        }
     }
 }

@@ -3,39 +3,55 @@ namespace Hello.Middleware;
 using System.Security.Cryptography;
 using System.Text;
 using Hello.Helpers;
+using Microsoft.Extensions.Options;
 
 public class ApproovTokenBindingMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly AppSettings _appSettings;
     private readonly ILogger<ApproovTokenBindingMiddleware> _logger;
 
-    public ApproovTokenBindingMiddleware(RequestDelegate next, ILogger<ApproovTokenBindingMiddleware> logger)
+    public ApproovTokenBindingMiddleware(
+        RequestDelegate next,
+        IOptions<AppSettings> appSettings,
+        ILogger<ApproovTokenBindingMiddleware> logger)
     {
         _next = next;
+        _appSettings = appSettings.Value;
         _logger = logger;
     }
 
     public async Task Invoke(HttpContext context)
     {
-        var tokenBinding = context.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var bindingValue)
-            ? bindingValue as string
+        var tokenBindingClaim = context.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var bindingObject)
+            ? bindingObject as string
             : null;
 
-        if (string.IsNullOrWhiteSpace(tokenBinding))
+        if (string.IsNullOrWhiteSpace(tokenBindingClaim))
         {
             await _next(context);
             return;
         }
 
-        var authorizationToken = context.Request.Headers["Authorization"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(authorizationToken))
+        var headerName = _appSettings.TokenBindingHeader;
+        if (string.IsNullOrWhiteSpace(headerName))
         {
-            _logger.LogInformation("Approov token binding requested but Authorization header is missing.");
+            _logger.LogDebug("Token binding claim present but no binding header configured; skipping verification.");
+            await _next(context);
+            return;
+        }
+
+        var headerValue = context.Request.Headers[headerName].ToString().Trim();
+        if (string.IsNullOrWhiteSpace(headerValue))
+        {
+            _logger.LogInformation(
+                "Approov token binding requested but required header '{Header}' is missing or empty.",
+                headerName);
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
         }
 
-        if (!VerifyApproovTokenBinding(authorizationToken, tokenBinding))
+        if (!VerifyApproovTokenBinding(headerValue, tokenBindingClaim))
         {
             _logger.LogInformation("Invalid Approov token binding.");
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -46,9 +62,9 @@ public class ApproovTokenBindingMiddleware
         await _next(context);
     }
 
-    private static bool VerifyApproovTokenBinding(string authorizationToken, string tokenBinding)
+    private static bool VerifyApproovTokenBinding(string headerValue, string tokenBinding)
     {
-        var computedHash = Sha256Base64Encoded(authorizationToken);
+        var computedHash = Sha256Base64Encoded(headerValue);
         return CryptographicOperations.FixedTimeEquals(
             Encoding.UTF8.GetBytes(tokenBinding),
             Encoding.UTF8.GetBytes(computedHash));

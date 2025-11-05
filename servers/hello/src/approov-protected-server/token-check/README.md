@@ -20,15 +20,17 @@ To lock down your API server to your mobile app. Please read the brief summary i
 
 ## How it works?
 
-The sample API mirrors the OpenResty/Lua reference implementation. It lives at [src/approov-protected-server/token-check](src/approov-protected-server/token-check), and consolidates the token check, token binding, and message signing examples into a single project. It exposes the following endpoints:
+The sample API exposes the following endpoints:
 
 * `/hello` – plain text check that the service is alive.
 * `/token` – validates the Approov token and, when the `ipk` claim is present, verifies the Approov installation message signature. Success returns `Good Token`; failures return a `401` with `Invalid Token`.
 * `/ipk_test` – development helper. Without an `ipk` header it generates and logs a fresh P-256 key pair. With an `ipk` header it validates that the provided public key can be decoded.
-* `/ipk_message_sign_test` – accepts a `private-key` (base64 DER) and a `msg` (base64 canonical message) header and returns an ECDSA P-256/SHA-256 raw signature. The Lua scripts call this to create deterministic signatures.
+* `/ipk_message_sign_test` – accepts a `private-key` (base64 DER) and a `msg` (base64 canonical message) header and returns an ECDSA P-256/SHA-256 raw signature. The scripts call this to create deterministic signatures.
 * `/sfv_test` – parses and reserialises Structured Field Value headers. The OpenResty quickstart invokes this when running `request_tests_sfv.sh`.
 
-Approov tokens are validated by the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs). Token binding is enforced by the [ApproovTokenBindingMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenBindingMiddleware.cs), and message signing is handled by [MessageSigningMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/MessageSigningMiddleware.cs) which shares the same canonical string construction, structured field parsing, and ECDSA verification logic as the Lua quickstart.
+Approov tokens are validated by the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs). Token binding is enforced by the [ApproovTokenBindingMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenBindingMiddleware.cs), and message signing is handled by [MessageSigningMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/MessageSigningMiddleware.cs) which shares the same canonical string construction, structured field parsing, and ECDSA verification logic.
+
+You can tune which request headers participate in the binding by setting the `APPROOV_TOKEN_BINDING_HEADER` environment variable (for example `Authorization`). When the variable is unset or empty the server skips token binding checks.
 
 For more background on Approov, see the [Approov Overview](/OVERVIEW.md#how-it-works) at the root of this repo.
 
@@ -67,14 +69,14 @@ The quickest way to bring up the sample backends (unprotected and Approov-protec
 ./scripts/run-local.sh all
 ```
 
-The Lua quickstart scripts expect the token-check server on `http://0.0.0.0:8111`. Once the service is running you can execute the shell helpers that ship with the OpenResty repo, for example:
+The quickstart scripts expect the token-check server on `http://0.0.0.0:8111`. Once the service is running you can execute the shell helpers that ship with the OpenResty repo, for example:
 
 ```bash
 ./request_tests_approov_msg.sh 8111
 ./request_tests_sfv.sh 8111
 ```
 
-The commands above exercise the `/token`, `/ipk_message_sign_test`, `/ipk_test` and `/sfv_test` endpoints in exactly the same way as the Lua environment. You can also interact with the endpoints manually:
+The commands above exercise the `/token`, `/ipk_message_sign_test`, `/ipk_test` and `/sfv_test` endpoints. You can also interact with the endpoints manually:
 
 ```bash
 # basic token check (replace with a valid Approov token)

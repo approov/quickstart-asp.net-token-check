@@ -70,12 +70,13 @@ First, enable your Approov `admin` role with:
 
 ```bash
 eval `approov role admin`
-````
+```
 
 For the Windows powershell:
 
 ```bash
 set APPROOV_ROLE=admin:___YOUR_APPROOV_ACCOUNT_NAME_HERE___
+
 ```
 
 Next, retrieve the Approov secret with:
@@ -90,6 +91,7 @@ Open the `.env` file and add the Approov secret to the var:
 
 ```bash
 APPROOV_BASE64_SECRET=approov_base64_secret_here
+APPROOV_TOKEN_BINDING_HEADER=Authorization
 ```
 
 [TOC](#toc---table-of-contents)
@@ -112,9 +114,11 @@ Next, let's add the class to load the app settings:
 ```c#
 namespace AppName.Helpers;
 
+
 public class AppSettings
 {
     public byte[] ?ApproovSecretBytes { get; set; }
+    public string? TokenBindingHeader { get; set; }
 }
 ```
 
@@ -219,6 +223,7 @@ namespace AppName.Middleware;
 using System.Security.Cryptography;
 using System.Text;
 using AppName.Helpers;
+using Microsoft.Extensions.Primitives;
 
 public class ApproovTokenBindingMiddleware
 {
@@ -243,15 +248,24 @@ public class ApproovTokenBindingMiddleware
             return;
         }
 
-        var authorizationToken = context.Request.Headers["Authorization"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(authorizationToken))
+        var authorizationHeader = context.Request.Headers["Authorization"];
+        var authorizationValue = CombineHeaderValues(authorizationHeader);
+        if (string.IsNullOrWhiteSpace(authorizationValue))
         {
             _logger.LogInformation("Approov token binding requested but Authorization header is missing.");
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
         }
 
-        if (!VerifyApproovTokenBinding(authorizationToken, tokenBinding))
+        var bindingCandidates = new List<string> { authorizationValue };
+
+        var deviceIdValue = CombineHeaderValues(context.Request.Headers["X-Device-Id"]);
+        if (!string.IsNullOrWhiteSpace(deviceIdValue))
+        {
+            bindingCandidates.Add(string.Concat(authorizationValue, deviceIdValue));
+        }
+
+        if (!VerifyApproovTokenBinding(bindingCandidates, tokenBinding))
         {
             _logger.LogInformation("Invalid Approov token binding.");
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -262,12 +276,25 @@ public class ApproovTokenBindingMiddleware
         await _next(context);
     }
 
-    private static bool VerifyApproovTokenBinding(string authorizationToken, string tokenBinding)
+    private static bool VerifyApproovTokenBinding(IEnumerable<string> bindingSources, string tokenBinding)
     {
-        var computedHash = Sha256Base64Encoded(authorizationToken);
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(tokenBinding),
-            Encoding.UTF8.GetBytes(computedHash));
+        foreach (var candidate in bindingSources)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            var computedHash = Sha256Base64Encoded(candidate);
+            if (CryptographicOperations.FixedTimeEquals(
+                    Encoding.UTF8.GetBytes(tokenBinding),
+                    Encoding.UTF8.GetBytes(computedHash)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string Sha256Base64Encoded(string input)
@@ -277,8 +304,36 @@ public class ApproovTokenBindingMiddleware
         var hashBytes = sha256.ComputeHash(inputBytes);
         return Convert.ToBase64String(hashBytes);
     }
+
+    private static string CombineHeaderValues(StringValues values)
+    {
+        if (values.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (values.Count == 1)
+        {
+            return values[0].Trim();
+        }
+
+        var builder = new StringBuilder();
+        for (var i = 0; i < values.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(',');
+            }
+
+            builder.Append(values[i].Trim());
+        }
+
+        return builder.ToString();
+    }
 }
 ```
+
+> **Tip:** The quickstart tests bind to the `Authorization` header. Set `APPROOV_TOKEN_BINDING_HEADER=Authorization` in your environment (or `.env`) to mirror the sample requests. Leaving the variable empty disables token binding checks entirely.
 
 Now, in `Program.cs` load the secrets from the `.env` file and inject it into `AppSettiongs`:
 
@@ -294,10 +349,12 @@ if(approovBase64Secret == null) {
 }
 
 var approovSecretBytes = System.Convert.FromBase64String(approovBase64Secret);
+var tokenBindingHeader = DotNetEnv.Env.GetString("APPROOV_TOKEN_BINDING_HEADER");
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<AppSettings>(appSettings => {
     appSettings.ApproovSecretBytes = approovSecretBytes;
+    appSettings.TokenBindingHeader = tokenBindingHeader;
 });
 
 // ... omitted boilerplate and/or your code

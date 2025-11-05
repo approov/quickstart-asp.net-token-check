@@ -95,7 +95,38 @@ public static class StructuredFieldFormatter
             case int smallInteger:
                 return smallInteger.ToString(CultureInfo.InvariantCulture);
             case double number:
-                return number.ToString("G", CultureInfo.InvariantCulture);
+            {
+                if (double.IsNaN(number) || double.IsInfinity(number))
+                {
+                    throw new FormatException("Structured field number must be finite.");
+                }
+
+                var formatted = number.ToString("F3", CultureInfo.InvariantCulture).TrimEnd('0');
+                if (formatted.EndsWith(".", StringComparison.Ordinal))
+                {
+                    formatted = formatted.Substring(0, formatted.Length - 1);
+                }
+
+                if (formatted == "-0")
+                {
+                    formatted = "0";
+                }
+
+                if (formatted.IndexOfAny(new[] { 'e', 'E' }) >= 0)
+                {
+                    throw new FormatException("Structured field number must not use scientific notation.");
+                }
+
+                var signOffset = formatted.StartsWith("-", StringComparison.Ordinal) ? 1 : 0;
+                var decimalIndex = formatted.IndexOf('.', signOffset);
+                var integerLength = decimalIndex >= 0 ? decimalIndex - signOffset : formatted.Length - signOffset;
+                if (integerLength > 12)
+                {
+                    throw new FormatException("Structured field number has more than 12 digits before the decimal point.");
+                }
+
+                return formatted;
+            }
             case string text:
                 return SerializeString(text);
             case Token token:

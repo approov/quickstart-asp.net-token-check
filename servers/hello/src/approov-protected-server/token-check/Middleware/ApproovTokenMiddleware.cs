@@ -22,14 +22,13 @@ public class ApproovTokenMiddleware
     {
         var token = context.Request.Headers["Approov-Token"].FirstOrDefault();
 
-        if (string.IsNullOrWhiteSpace(token)) {
-            _logger.LogInformation("DebugLogToRemove: Missing Approov-Token header.");
+        if (token == null) {
+            _logger.LogInformation("Missing Approov-Token header.");
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
 
         if (verifyApproovToken(context, token)) {
-            context.Items[ApproovTokenContextKeys.ApproovToken] = token;
             await _next(context);
             return;
         }
@@ -43,11 +42,6 @@ public class ApproovTokenMiddleware
         try
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            if (_appSettings.ApproovSecretBytes == null || _appSettings.ApproovSecretBytes.Length == 0)
-            {
-                _logger.LogError("DebugLogToRemove: Approov secret bytes not configured.");
-                return false;
-            }
 
             tokenHandler.ValidateToken(token, new TokenValidationParameters
             {
@@ -59,82 +53,13 @@ public class ApproovTokenMiddleware
                 ClockSkew = TimeSpan.Zero
             }, out SecurityToken validatedToken);
 
-            var jwtToken = (JwtSecurityToken)validatedToken;
-            _logger.LogInformation("DebugLogToRemove: Approov token header alg={Alg} kid={Kid}", jwtToken.Header.Alg, jwtToken.Header.Kid ?? "<none>");
-            var metadata = captureApproovTokenMetadata(context, jwtToken);
-            if (!string.IsNullOrEmpty(metadata.DeviceId))
-            {
-                _logger.LogInformation("DebugLogToRemove: Approov token device id={DeviceId}", metadata.DeviceId);
-            }
-            if (metadata.ExpiryUtc.HasValue)
-            {
-                _logger.LogInformation("DebugLogToRemove: Approov token expiry (UTC)={Expiry}", metadata.ExpiryUtc.Value);
-            }
-            if (!string.IsNullOrEmpty(metadata.InstallationPublicKey))
-            {
-                _logger.LogInformation("DebugLogToRemove: Approov token installation public key present");
-            }
-
             return true;
         } catch (SecurityTokenException exception) {
-            _logger.LogInformation("DebugLogToRemove: Approov token validation failed: {Message}", exception.Message);
+            _logger.LogInformation(exception.Message);
             return false;
         } catch (Exception exception) {
-            _logger.LogInformation("DebugLogToRemove: Unexpected token validation failure: {Message}", exception.Message);
+            _logger.LogInformation(exception.Message);
             return false;
         }
-    }
-
-    private readonly record struct TokenMetadata(string? DeviceId, DateTimeOffset? ExpiryUtc, string? InstallationPublicKey);
-
-    private static TokenMetadata captureApproovTokenMetadata(HttpContext context, JwtSecurityToken jwtToken)
-    {
-        var deviceId = jwtToken.Claims.FirstOrDefault(claim =>
-            string.Equals(claim.Type, "did", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(claim.Type, "device_id", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(claim.Type, "device", StringComparison.OrdinalIgnoreCase))
-            ?.Value;
-
-        if (!string.IsNullOrWhiteSpace(deviceId))
-        {
-            context.Items[ApproovTokenContextKeys.DeviceId] = deviceId;
-        }
-
-        var expiryUnixSeconds = jwtToken.Payload.Exp;
-        DateTimeOffset? expiryValue = null;
-        if (expiryUnixSeconds.HasValue)
-        {
-            try
-            {
-                expiryValue = DateTimeOffset.FromUnixTimeSeconds(expiryUnixSeconds.Value);
-                context.Items[ApproovTokenContextKeys.TokenExpiry] = expiryValue;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                // Leave unset if the exp claim contains an invalid value.
-            }
-        }
-        else
-        {
-            var expClaim = jwtToken.Claims.FirstOrDefault(claim => string.Equals(claim.Type, JwtRegisteredClaimNames.Exp, StringComparison.OrdinalIgnoreCase))?.Value;
-            if (expClaim != null && long.TryParse(expClaim, out var parsedExp))
-            {
-                expiryValue = DateTimeOffset.FromUnixTimeSeconds(parsedExp);
-                context.Items[ApproovTokenContextKeys.TokenExpiry] = expiryValue;
-            }
-        }
-
-        var installationPubKey = jwtToken.Claims.FirstOrDefault(claim =>
-            string.Equals(claim.Type, "ipk", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(claim.Type, "installation_pubkey", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(claim.Type, "installation_public_key", StringComparison.OrdinalIgnoreCase))
-            ?.Value;
-
-        if (!string.IsNullOrWhiteSpace(installationPubKey))
-        {
-            context.Items[ApproovTokenContextKeys.InstallationPublicKey] = installationPubKey;
-        }
-
-        return new TokenMetadata(deviceId, expiryValue, installationPubKey);
     }
 }

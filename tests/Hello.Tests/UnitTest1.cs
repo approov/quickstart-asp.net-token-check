@@ -2,258 +2,116 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using Hello.Controllers;
 using Hello.Helpers;
 using Hello.Middleware;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
-public class MessageSigningUtilitiesTests
+public class MessageSigningVerifierTests
 {
+    internal const string TestPrivateKey = "MHcCAQEEIHWZ2Ueq6odQNG+aaYmEbp7C6nujYNGr7nYKK2jqQ2asoAoGCCqGSM49AwEHoUQDQgAEJSm4DMcivAwvhM+KNce2C/X26cj3oGyUwWVUPuNuZHtd2qyVsM+0g7qX73Qh0Of6fn10AApLnl8vRQsvx94fZQ==";
+    private const string TestPublicKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJSm4DMcivAwvhM+KNce2C/X26cj3oGyUwWVUPuNuZHtd2qyVsM+0g7qX73Qh0Of6fn10AApLnl8vRQsvx94fZQ==";
+    private const string ApproovToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHByb292LmlvIiwiZXhwIjoxOTk5OTk5OTk5LCJpYXQiOjE3MDAwMDAwMDAsImlzcyI6IkFwcHJvb3ZBY2NvdW50SUQuYXBwcm9vdi5pbyIsInN1YiI6ImFwcHJvb3Z8RXhhbXBsZUFwcHJvb3ZUb2tlbkRJRD09IiwiaXAiOiIxLjIuMy40IiwiaXBrIjoiTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFSlNtNERNY2l2QXd2aE0rS05jZTJDL1gyNmNqM29HeVV3V1ZVUHVOdVpIdGQycXlWc00rMGc3cVg3M1FoME9mNmZuMTBBQXBMbmw4dlJRc3Z4OTRmWlE9PSIsImRpZCI6IkV4YW1wbGVBcHByb292VG9rZW5ESUQ9PSJ9.hV6xTkGsp9uWwrD-yKkIGTBJawbofJEsuRLw9Qa5YXY";
+
     [Fact]
-    public async Task BuildCanonicalMessageAsync_ComposesExpectedString()
+    public async Task VerifyAsync_WithValidSignature_ReturnsSuccess()
     {
+        var (context, signatureInput) = BuildRequest();
+        var canonicalMessage = BuildCanonicalMessage(signatureInput);
+        var signature = SignCanonicalMessage(canonicalMessage);
+
+        context.Request.Headers["Signature"] = $"install=:{signature}:";
+
+        var verifier = new ApproovMessageSignatureVerifier(NullLogger<ApproovMessageSignatureVerifier>.Instance);
+        var result = await verifier.VerifyAsync(context, TestPublicKey);
+
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_WithInvalidSignature_ReturnsFailure()
+    {
+        var (context, signatureInput) = BuildRequest();
+        var canonicalMessage = BuildCanonicalMessage(signatureInput);
+        var signature = SignCanonicalMessage(canonicalMessage);
+        var tampered = signature[..^1] + (signature[^1] == 'A' ? "B" : "A");
+
+        context.Request.Headers["Signature"] = $"install=:{tampered}:";
+
+        var verifier = new ApproovMessageSignatureVerifier(NullLogger<ApproovMessageSignatureVerifier>.Instance);
+        var result = await verifier.VerifyAsync(context, TestPublicKey);
+
+        Assert.False(result.Success);
+    }
+
+    private static (DefaultHttpContext Context, string SignatureInput) BuildRequest()
+    {
+        const string signatureInput = "(\"@method\" \"approov-token\");alg=\"ecdsa-p256-sha256\";created=1744292750;expires=1999999999";
+
         var context = new DefaultHttpContext();
-        context.Request.Method = "POST";
-        context.Request.Path = "/api/test";
-        context.Request.QueryString = new QueryString("?q=1");
-        context.Request.Headers["Approov-Token"] = "token123";
-        context.Request.Headers["Custom-Header"] = "SomeValue";
-        context.Request.Headers["Content-Type"] = "application/json";
+        context.Request.Method = "GET";
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("0.0.0.0", 8002);
+        context.Request.Path = "/token";
+        context.Request.QueryString = new QueryString("?param1=value1&param2=value2");
+        context.Request.Headers["Approov-Token"] = ApproovToken;
+        context.Request.Headers["Signature-Input"] = $"install={signatureInput}";
 
-        var bodyBytes = Encoding.UTF8.GetBytes("{\"hello\":\"world\"}");
-        context.Request.Body = new MemoryStream(bodyBytes);
-        context.Request.ContentLength = bodyBytes.Length;
-
-        var canonical = await MessageSigningUtilities.BuildCanonicalMessageAsync(
-            context.Request,
-            new[] { "Approov-Token", "Custom-Header" });
-
-        var bodyHash = Convert.ToBase64String(SHA256.HashData(bodyBytes));
-        var expected = string.Join('\n', new[]
-        {
-            "POST",
-            "/api/test?q=1",
-            "approov-token:token123",
-            "custom-header:SomeValue",
-            bodyHash
-        });
-
-        Assert.Equal(expected, canonical.Payload);
-        Assert.Equal(bodyHash, canonical.BodyHashBase64);
-        Assert.Equal("POST", canonical.Method);
-        Assert.Equal("/api/test?q=1", canonical.PathAndQuery);
-        Assert.Equal("token123", canonical.Headers["approov-token"]);
+        return (context, signatureInput);
     }
 
-    [Fact]
-    public void VerifyInstallationSignature_ReturnsTrueForValidSignature()
+    private static string BuildCanonicalMessage(string signatureInput)
     {
-        var message = Encoding.UTF8.GetBytes("installation-message");
-
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var signature = Convert.ToBase64String(ecdsa.SignData(message, HashAlgorithmName.SHA256));
-        var publicKey = Convert.ToBase64String(ecdsa.ExportSubjectPublicKeyInfo());
-
-        Assert.True(MessageSigningUtilities.VerifyInstallationSignature(message, signature, publicKey));
-        Assert.False(MessageSigningUtilities.VerifyInstallationSignature(Encoding.UTF8.GetBytes("tampered"), signature, publicKey));
+        var builder = new StringBuilder();
+        builder.AppendLine("\"@method\": GET");
+        builder.AppendLine($"\"approov-token\": {ApproovToken}");
+        builder.Append("\"@signature-params\": ");
+        builder.Append(signatureInput);
+        return builder.ToString();
     }
 
-    [Fact]
-    public void VerifyAccountSignature_ReturnsTrueForValidSignature()
+    private static string SignCanonicalMessage(string canonicalMessage)
     {
-        var baseSecret = Convert.FromBase64String("AAECAwQFBgcICQoLDA0ODw==");
-        var deviceIdBytes = Enumerable.Range(1, 16).Select(i => (byte)i).ToArray();
-        var deviceId = Convert.ToBase64String(deviceIdBytes);
-        var tokenExpiry = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
-
-        var derivedSecret = MessageSigningUtilities.DeriveSecret(baseSecret, deviceId, tokenExpiry);
-        var messageBytes = Encoding.UTF8.GetBytes("account-message");
-        using var hmac = new HMACSHA256(derivedSecret);
-        var signature = Convert.ToBase64String(hmac.ComputeHash(messageBytes));
-
-        Assert.True(MessageSigningUtilities.VerifyAccountSignature(messageBytes, signature, derivedSecret));
-
-        var tamperedSignature = signature[..^1] + (signature[^1] == 'A' ? "B" : "A");
-        Assert.False(MessageSigningUtilities.VerifyAccountSignature(messageBytes, tamperedSignature, derivedSecret));
+        var messageBytes = Encoding.UTF8.GetBytes(canonicalMessage);
+        using var ecdsa = ECDsa.Create();
+        var privateKey = Convert.FromBase64String(TestPrivateKey);
+        ecdsa.ImportECPrivateKey(privateKey, out _);
+        var signature = ecdsa.SignData(messageBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        return Convert.ToBase64String(signature);
     }
 }
 
-public class MessageSigningMiddlewareTests
+public class ControllerSmokeTests
 {
     [Fact]
-    public async Task NoneMode_BypassesVerification()
+    public void IpkTest_GeneratesKeysWhenHeaderMissing()
     {
-        var settings = Options.Create(new AppSettings
-        {
-            MessageSigningMode = MessageSigningMode.None
-        });
+        var controller = new ApproovController(NullLogger<ApproovController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
 
-        var invoked = false;
-        RequestDelegate next = _ =>
-        {
-            invoked = true;
-            return Task.CompletedTask;
-        };
+        var result = controller.IpkTest() as ContentResult;
 
-        var middleware = new MessageSigningMiddleware(next, settings, NullLogger<MessageSigningMiddleware>.Instance);
-        var context = new DefaultHttpContext();
-
-        await middleware.InvokeAsync(context);
-
-        Assert.True(invoked);
+        Assert.NotNull(result);
+        Assert.Equal("No IPK header, generated keys logged", result!.Content);
     }
 
     [Fact]
-    public async Task InstallationMode_ValidSignature_AllowsRequest()
-    {
-        var settings = Options.Create(new AppSettings
-        {
-            MessageSigningMode = MessageSigningMode.Installation,
-            MessageSigningHeaderNames = new[] { "Approov-Token", "Content-Type" },
-            MessageSigningMaxAgeSeconds = 300
-        });
-
-        var called = false;
-        RequestDelegate next = _ =>
-        {
-            called = true;
-            return Task.CompletedTask;
-        };
-
-        var middleware = new MessageSigningMiddleware(next, settings, NullLogger<MessageSigningMiddleware>.Instance);
-        var context = BuildHttpContext();
-
-        var headerNames = new[] { "Approov-Token", "Content-Type" };
-        var canonicalMessage = await MessageSigningUtilities.BuildCanonicalMessageAsync(context.Request, headerNames);
-
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var signature = Convert.ToBase64String(ecdsa.SignData(canonicalMessage.PayloadBytes, HashAlgorithmName.SHA256));
-        var publicKey = Convert.ToBase64String(ecdsa.ExportSubjectPublicKeyInfo());
-
-        var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        context.Request.Headers["Signature-Input"] = "sig1=(\"@method\" \"@path\" \"approov-token\" \"content-type\");created=" + created;
-        context.Request.Headers["Signature"] = "sig1=:" + signature + ":";
-        context.Items[ApproovTokenContextKeys.ApproovToken] = context.Request.Headers["Approov-Token"].ToString();
-        context.Items[ApproovTokenContextKeys.InstallationPublicKey] = publicKey;
-
-        await middleware.InvokeAsync(context);
-
-        Assert.True(called);
-        Assert.NotEqual(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-    }
-
-    [Fact]
-    public async Task InstallationMode_InvalidSignature_DeniesRequest()
-    {
-        var settings = Options.Create(new AppSettings
-        {
-            MessageSigningMode = MessageSigningMode.Installation,
-            MessageSigningHeaderNames = new[] { "Approov-Token" },
-            MessageSigningMaxAgeSeconds = 300
-        });
-
-        var middleware = new MessageSigningMiddleware(_ => Task.CompletedTask, settings, NullLogger<MessageSigningMiddleware>.Instance);
-        var context = BuildHttpContext();
-
-        context.Request.Headers["Signature-Input"] = "sig1=(\"@method\" \"@path\" \"approov-token\");created=" + DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        context.Request.Headers["Signature"] = "sig1=:invalid:";
-        context.Items[ApproovTokenContextKeys.ApproovToken] = context.Request.Headers["Approov-Token"].ToString();
-        context.Items[ApproovTokenContextKeys.InstallationPublicKey] = Convert.ToBase64String(ECDsa.Create(ECCurve.NamedCurves.nistP256).ExportSubjectPublicKeyInfo());
-
-        await middleware.InvokeAsync(context);
-
-        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-    }
-
-    [Fact]
-    public async Task AccountMode_ValidSignature_AllowsRequest()
-    {
-        var baseSecret = Convert.FromBase64String("AAECAwQFBgcICQoLDA0ODw==");
-        var deviceIdBytes = Enumerable.Range(1, 16).Select(i => (byte)i).ToArray();
-        var deviceId = Convert.ToBase64String(deviceIdBytes);
-        var tokenExpiry = DateTimeOffset.UtcNow.AddMinutes(2);
-
-        var settings = Options.Create(new AppSettings
-        {
-            MessageSigningMode = MessageSigningMode.Account,
-            AccountMessageBaseSecretBytes = baseSecret,
-            MessageSigningHeaderNames = new[] { "Approov-Token", "Content-Type" },
-            MessageSigningMaxAgeSeconds = 300
-        });
-
-        var called = false;
-        RequestDelegate next = _ =>
-        {
-            called = true;
-            return Task.CompletedTask;
-        };
-
-        var middleware = new MessageSigningMiddleware(next, settings, NullLogger<MessageSigningMiddleware>.Instance);
-        var context = BuildHttpContext();
-
-        var headerNames = new[] { "Approov-Token", "Content-Type" };
-        var canonicalMessage = await MessageSigningUtilities.BuildCanonicalMessageAsync(context.Request, headerNames);
-        var derivedSecret = MessageSigningUtilities.DeriveSecret(baseSecret, deviceId, tokenExpiry);
-        using var hmac = new HMACSHA256(derivedSecret);
-        var signature = Convert.ToBase64String(hmac.ComputeHash(canonicalMessage.PayloadBytes));
-
-        var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        context.Request.Headers["Signature-Input"] = "sig1=(\"@method\" \"@path\" \"approov-token\" \"content-type\");created=" + created;
-        context.Request.Headers["Signature"] = "sig1=:" + signature + ":";
-        context.Items[ApproovTokenContextKeys.ApproovToken] = context.Request.Headers["Approov-Token"].ToString();
-        context.Items[ApproovTokenContextKeys.DeviceId] = deviceId;
-        context.Items[ApproovTokenContextKeys.TokenExpiry] = tokenExpiry;
-
-        await middleware.InvokeAsync(context);
-
-        Assert.True(called);
-        Assert.NotEqual(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-    }
-
-    [Fact]
-    public async Task AccountMode_ExpiredSignature_DeniesRequest()
-    {
-        var baseSecret = Convert.FromBase64String("AAECAwQFBgcICQoLDA0ODw==");
-        var deviceId = Convert.ToBase64String(Enumerable.Range(1, 16).Select(i => (byte)i).ToArray());
-
-        var settings = Options.Create(new AppSettings
-        {
-            MessageSigningMode = MessageSigningMode.Account,
-            AccountMessageBaseSecretBytes = baseSecret,
-            MessageSigningHeaderNames = new[] { "Approov-Token" },
-            MessageSigningMaxAgeSeconds = 60
-        });
-
-        var middleware = new MessageSigningMiddleware(_ => Task.CompletedTask, settings, NullLogger<MessageSigningMiddleware>.Instance);
-        var context = BuildHttpContext();
-
-        var created = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds();
-        context.Request.Headers["Signature-Input"] = "sig1=(\"@method\" \"@path\" \"approov-token\");created=" + created;
-        context.Request.Headers["Signature"] = "sig1=:invalid:";
-        context.Items[ApproovTokenContextKeys.ApproovToken] = context.Request.Headers["Approov-Token"].ToString();
-        context.Items[ApproovTokenContextKeys.DeviceId] = deviceId;
-        context.Items[ApproovTokenContextKeys.TokenExpiry] = DateTimeOffset.UtcNow;
-
-        await middleware.InvokeAsync(context);
-
-        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-    }
-
-    private static DefaultHttpContext BuildHttpContext()
+    public void IpKMessageSign_ReturnsSignature()
     {
         var context = new DefaultHttpContext();
-        context.Response.Body = new MemoryStream();
-        context.Request.Method = "POST";
-        context.Request.Path = "/resource";
-        context.Request.QueryString = new QueryString("?id=123");
-        context.Request.Headers["Approov-Token"] = "token-value";
-        context.Request.Headers["Content-Type"] = "application/json";
+        context.Request.Headers["private-key"] = MessageSigningVerifierTests.TestPrivateKey;
+        context.Request.Headers["msg"] = Convert.ToBase64String(Encoding.UTF8.GetBytes("payload"));
 
-        var body = Encoding.UTF8.GetBytes("{\"key\":\"value\"}");
-        context.Request.Body = new MemoryStream(body);
-        context.Request.ContentLength = body.Length;
+        var controller = new ApproovController(NullLogger<ApproovController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = context }
+        };
 
-        return context;
+        var actionResult = controller.IpkMessageSignTest() as ContentResult;
+
+        Assert.NotNull(actionResult);
+        Assert.False(string.IsNullOrEmpty(actionResult!.Content));
     }
 }

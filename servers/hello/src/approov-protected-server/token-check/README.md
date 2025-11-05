@@ -20,15 +20,15 @@ To lock down your API server to your mobile app. Please read the brief summary i
 
 ## How it works?
 
-The API server is very simple and is defined at [src/approov-protected-server/token-check](src/approov-protected-server/token-check), and only responds to the endpoint `/` with this message:
+The sample API mirrors the OpenResty/Lua reference implementation. It lives at [src/approov-protected-server/token-check](src/approov-protected-server/token-check) and exposes the following endpoints:
 
-```json
-{"message": "Hello, World!"}
-```
+* `/hello` – plain text check that the service is alive.
+* `/token` – validates the Approov token and, when the `ipk` claim is present, verifies the Approov installation message signature. Success returns `Good Token`; failures return a `401` with `Invalid Token`.
+* `/ipk_test` – development helper. Without an `ipk` header it generates and logs a fresh P-256 key pair. With an `ipk` header it validates that the provided public key can be decoded.
+* `/ipk_message_sign_test` – accepts a `private-key` (base64 DER) and a `msg` (base64 canonical message) header and returns an ECDSA P-256/SHA-256 raw signature. The Lua scripts call this to create deterministic signatures.
+* `/sfv_test` – parses and reserialises Structured Field Value headers. The OpenResty quickstart invokes this when running `request_tests_sfv.sh`.
 
-The `200` response is only sent when a valid Approov token is present on the header of the request, otherwise a `401` response is sent back.
-
-Take a look at the `verifyApproovToken()` function at the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs) class to see the simple code for the check.
+Approov tokens are validated by the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs). Message signing is enforced by [MessageSigningMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/MessageSigningMiddleware.cs) which shares the same canonical string construction, structured field parsing, and ECDSA verification logic as the Lua quickstart.
 
 For more background on Approov, see the [Approov Overview](/OVERVIEW.md#how-it-works) at the root of this repo.
 
@@ -54,62 +54,40 @@ From `servers/hello/src/approov-protected-server/token-check` execute the follow
 cp .env.example .env
 ```
 
-Edit the `.env` file and add the [dummy secret](/TESTING.md#the-dummy-secret) to it in order to be able to test the Approov integration with the provided [Postman collection](https://github.com/approov/postman-collections/blob/master/quickstarts/hello-world/hello-world.postman_curl_requests_examples.md).
-
-[TOC](#toc---table-of-contents)
-
-## Message Signing Configuration
-
-After the Approov token is validated the API can optionally verify an [Approov Message Signing](https://approov.io/docs/latest/approov-usage-documentation/#installation-message-signing) signature. Configure the behaviour in `appsettings.json`:
-
-```jsonc
-"Approov": {
-  "MessageSigningMode": "Installation",   // None | Installation | Account
-  "AccountMessageBaseSecret": "",         // Required when Account mode is selected
-  "MessageSigningMaxAgeSeconds": 300,      // Reject signatures older than this age
-  "RequireSignatureNonce": false,          // Enforce nonce presence if you track replay protection
-  "SignedHeaders": [
-    "Approov-Token",
-    "Content-Type"
-  ]
-}
-```
-
-* **None** — message signing checks are skipped and only the token is validated.
-* **Installation** — expects an `ipk` claim in the Approov token. The middleware extracts the Elliptic Curve public key and verifies an ECDSA P-256/SHA-256 signature over the canonical request representation (HTTP method, path + query, configured headers and body hash when present).
-* **Account** — derives a per-token HMAC key using the configured base secret, the device ID (`did` claim) and token expiry. The base secret can be provided in base64 or base32 form exactly as exported by `approov secret -messageSigningKey`.
-
-The canonical message always includes the `Approov-Token` header to prevent replay. If the client supplies a [`Signature-Input`](https://www.rfc-editor.org/rfc/rfc9421) header its declared components are honoured; otherwise the server falls back to the `SignedHeaders` list. Set `MessageSigningMaxAgeSeconds` and `RequireSignatureNonce` to mirror your policy for timestamp freshness and nonce enforcement.
+Edit the `.env` file and add the [dummy secret](/TESTING.md#the-dummy-secret) to the `APPROOV_BASE64_SECRET` entry.
 
 [TOC](#toc---table-of-contents)
 
 
 ## Try the Approov Integration Example
 
-First, you need to run this example from the `src/approov-protected-server/token-check` folder with:
+The quickest way to bring up all sample backends (unprotected, token-check, token-binding) is:
 
 ```bash
-dotnet run
+./scripts/run-local.sh all
 ```
 
-Next, you can test that it works with:
+The Lua quickstart scripts expect the token-check server on `http://0.0.0.0:8002`. Once the service is running you can execute the shell helpers that ship with the OpenResty repo, for example:
 
 ```bash
-curl -iX GET 'http://localhost:8002'
+./request_tests_approov_msg.sh 8002
+./request_tests_sfv.sh 8002
 ```
 
-The response will be a `401` unauthorized request:
+The commands above exercise the `/token`, `/ipk_message_sign_test`, `/ipk_test` and `/sfv_test` endpoints in exactly the same way as the Lua environment. You can also interact with the endpoints manually:
 
-```text
-HTTP/1.1 401 Unauthorized
-Content-Length: 0
-Date: Wed, 01 Jun 2022 11:42:42 GMT
-Server: Kestrel
+```bash
+# basic token check (replace with a valid Approov token)
+curl -H "Approov-Token: <token>" http://localhost:8002/token
+
+# generate a deterministic signature for a canonical message
+curl -H "private-key: <base64 DER EC private key>" \
+     -H "msg: <base64 canonical message>" \
+     http://localhost:8002/ipk_message_sign_test
+
+# verify Structured Field Value parsing
+curl -H "sfv:?1;param=123" -H "sfvt:ITEM" http://localhost:8002/sfv_test
 ```
-
-The reason you got a `401` is because the Approoov token isn't provided in the headers of the request.
-
-Finally, you can test that the Approov integration example works as expected with this [Postman collection](/TESTING.md#testing-with-postman) or with some cURL requests [examples](/TESTING.md#testing-with-curl).
 
 Run the automated unit tests with:
 

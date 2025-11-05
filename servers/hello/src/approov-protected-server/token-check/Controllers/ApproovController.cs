@@ -51,7 +51,6 @@ public class ApproovController : ControllerBase
 
         return Content("Good Token Binding", "text/plain");
     }
-
     [HttpGet("/ipk_test")]
     public IActionResult IpkTest()
     {
@@ -64,7 +63,7 @@ public class ApproovController : ControllerBase
 
             var privateKeyBase64 = Convert.ToBase64String(privateKeyDer);
             var publicKeyBase64 = Convert.ToBase64String(publicKeyDer);
-            _logger.LogDebug("Generated EC key pair for testing. Private DER (b64)={Private} Public DER (b64)={Public}", privateKeyBase64, publicKeyBase64);
+            //_logger.LogDebug("Generated EC key pair for testing. Private DER (b64)={Private} Public DER (b64)={Public}", privateKeyBase64, publicKeyBase64);
 
             return Content("No IPK header, generated keys logged", "text/plain");
         }
@@ -83,7 +82,12 @@ public class ApproovController : ControllerBase
             return Content("Failed: failed to create public key", "text/plain");
         }
     }
-
+/* 
+ Sending cryptographic values across an insecure network without encrypting them is extremely unsafe, 
+ as anyone that intercepts these values can then decrypt your data. This endpoint exposes private keys to interception,
+ logging by web servers and proxies, and storage in browser history.
+ Make sure this endpoint is only used in a secure testing environment and never in production.
+ */
     [HttpGet("/ipk_message_sign_test")]
     public IActionResult IpkMessageSignTest()
     {
@@ -177,7 +181,7 @@ public class ApproovController : ControllerBase
 
     private IActionResult StructuredFieldFailure(string message)
     {
-            _logger.LogDebug("Structured field roundtrip failure - {Message}", message);
+        _logger.LogDebug("Structured field roundtrip failure - {Message}", message);
         Response.StatusCode = StatusCodes.Status401Unauthorized;
         return Content("Failed SFV roundtrip", "text/plain");
     }

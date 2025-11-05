@@ -279,7 +279,7 @@ public sealed class ApproovMessageSignatureVerifier
             case "@query":
                 return context.Request.QueryString.HasValue ? context.Request.QueryString.Value!.TrimStart('?') : string.Empty;
             case "@request-target":
-                return BuildTargetUri(context.Request);
+                return BuildRequestTarget(context.Request);
             case "@query-param":
                 return ResolveQueryParam(context, parameters);
             default:
@@ -293,6 +293,15 @@ public sealed class ApproovMessageSignatureVerifier
         builder.Append(request.Scheme);
         builder.Append("://");
         builder.Append(request.Host.ToUriComponent());
+        builder.Append(request.Path.ToString());
+        builder.Append(request.QueryString.ToString());
+        return builder.ToString();
+    }
+
+    // Constructs the origin-form request-target as per RFC 9421
+    private static string BuildRequestTarget(HttpRequest request)
+    {
+        var builder = new StringBuilder();
         builder.Append(request.Path.ToString());
         builder.Append(request.QueryString.ToString());
         return builder.ToString();

@@ -78,6 +78,7 @@ public sealed class ApproovMessageSignatureVerifier
         {
             return MessageSignatureResult.Failure("Signature missing 'created' parameter");
         }
+        // TODO: enforce a freshness window for the 'created' timestamp to guard against replayed signatures.
 
         var canonicalBase = await BuildCanonicalMessageAsync(context, componentIdentifiers, signatureInputItem.Parameters);
         if (!canonicalBase.Success)

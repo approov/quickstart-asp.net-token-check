@@ -121,6 +121,11 @@ public static class StructuredFieldFormatter
         builder.Append('"');
         foreach (var ch in value)
         {
+            if (ch < 0x20 || ch > 0x7E)
+            {
+                throw new FormatException($"Invalid character U+{((int)ch):X4} in structured field string.");
+            }
+
             if (ch == '"' || ch == '\\')
             {
                 builder.Append('\\');

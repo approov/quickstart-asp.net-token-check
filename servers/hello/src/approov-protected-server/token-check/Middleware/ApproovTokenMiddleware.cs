@@ -6,6 +6,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Hello.Helpers;
 using System.Security.Claims;
 
+// Enforces Approov JWT validation before the application pipeline sees the request.
 public class ApproovTokenMiddleware
 {
     private readonly RequestDelegate _next;
@@ -45,6 +46,7 @@ public class ApproovTokenMiddleware
         return;
     }
 
+    // Validates the JWT signature, extracts convenience claims, and caches them in HttpContext.Items.
     private bool verifyApproovToken(HttpContext context, string token)
     {
         try
@@ -105,6 +107,7 @@ public class ApproovTokenMiddleware
         }
     }
 
+    // Skips token enforcement for internal test endpoints that operate without Approov headers.
     private static bool IsBypassedPath(string? path)
     {
         if (string.IsNullOrEmpty(path))

@@ -5,6 +5,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Threading.Tasks;
 using Hello.Helpers;
 
+// Validates Approov HTTP message signatures when the token carries an installation public key.
 public class MessageSigningMiddleware
 {
     private readonly RequestDelegate _next;
@@ -47,6 +48,7 @@ public class MessageSigningMiddleware
         await _next(context);
     }
 
+    // Extracts the ipk claim from the JWT without validating payload contents again.
     private static string? ExtractInstallationPublicKey(string token)
     {
         try

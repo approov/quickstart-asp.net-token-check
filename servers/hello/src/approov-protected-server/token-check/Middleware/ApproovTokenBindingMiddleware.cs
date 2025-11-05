@@ -5,6 +5,7 @@ using System.Text;
 using Hello.Helpers;
 using Microsoft.Extensions.Options;
 
+// Confirms that the pay claim matches the configured binding header before continuing the request.
 public class ApproovTokenBindingMiddleware
 {
     private readonly RequestDelegate _next;
@@ -62,6 +63,7 @@ public class ApproovTokenBindingMiddleware
         await _next(context);
     }
 
+    // Recomputes the binding hash and checks it matches the pay claim in a timing-safe manner.
     private static bool VerifyApproovTokenBinding(string headerValue, string tokenBinding)
     {
         var computedHash = Sha256Base64Encoded(headerValue);
@@ -70,6 +72,7 @@ public class ApproovTokenBindingMiddleware
             Encoding.UTF8.GetBytes(computedHash));
     }
 
+    // Helper to keep hashing/encoding consistent with the mobile SDK implementation.
     private static string Sha256Base64Encoded(string input)
     {
         using var sha256 = SHA256.Create();

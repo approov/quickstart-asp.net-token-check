@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Text;
 using StructuredFieldValues;
 
+// Utility helpers that serialise structured field values back into header wire format.
 public static class StructuredFieldFormatter
 {
     public static string SerializeItem(ParsedItem item)

@@ -19,13 +19,16 @@ public class ApproovController : ControllerBase
     }
 
     [HttpGet("/hello")]
+    // Serves a minimal plaintext response to act as an HTTP liveness probe.
     public IActionResult Hello() => Content("hello, world", "text/plain");
 
     [HttpGet("/token")]
     [HttpPost("/token")]
+    // Confirms the caller presented a valid Approov token by echoing a success sentinel.
     public IActionResult Token() => Content("Good Token", "text/plain");
 
     [HttpGet("/token_binding")]
+    // Verifies that the binding middleware accepted the pay claim before acknowledging the request.
     public IActionResult TokenBinding()
     {
         var payClaim = HttpContext.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var value)
@@ -43,7 +46,9 @@ public class ApproovController : ControllerBase
 
         return Content("Good Token Binding", "text/plain");
     }
+
     [HttpGet("/ipk_test")]
+    // Exercises import/export of an installation public key so clients can validate the DER encoding roundtrip.
     public IActionResult IpkTest()
     {
         var ipkHeader = Request.Headers["ipk"].FirstOrDefault();
@@ -81,6 +86,7 @@ public class ApproovController : ControllerBase
  Make sure this endpoint is only used in a secure testing environment and never in production.
  */
     [HttpGet("/ipk_message_sign_test")]
+    // Signs an arbitrary message with a caller-supplied EC private key to help generate deterministic test vectors.
     public IActionResult IpkMessageSignTest()
     {
         var privateKeyBase64 = Request.Headers["private-key"].FirstOrDefault();
@@ -117,6 +123,7 @@ public class ApproovController : ControllerBase
     }
 
     [HttpGet("/sfv_test")]
+    // Validates HTTP Structured Field parsing and serialization against the caller-provided sample.
     public IActionResult StructuredFieldTest()
     {
         var sfvType = Request.Headers["sfvt"].FirstOrDefault();
@@ -171,6 +178,7 @@ public class ApproovController : ControllerBase
         return Content("SFV roundtrip OK", "text/plain");
     }
 
+    // Centralised failure path for structured field tests to keep logging and status consistent.
     private IActionResult StructuredFieldFailure(string message)
     {
         _logger.LogDebug("Structured field roundtrip failure - {Message}", message);
@@ -178,6 +186,7 @@ public class ApproovController : ControllerBase
         return Content("Failed SFV roundtrip", "text/plain");
     }
 
+    // Normalizes multi-value headers into a single comma-delimited field as per HTTP header semantics.
     private static string CombineHeaderValues(IReadOnlyList<string> values)
     {
         if (values.Count == 0)

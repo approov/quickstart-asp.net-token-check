@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using StructuredFieldValues;
 
+// Reconstructs the HTTP message signature base and validates ECDSA P-256 signatures from the Approov SDK.
 public sealed class ApproovMessageSignatureVerifier
 {
     private static readonly ISet<string> SupportedContentDigestAlgorithms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -26,6 +27,7 @@ public sealed class ApproovMessageSignatureVerifier
         _logger = logger;
     }
 
+    // Entry point used by middleware to validate signatures referenced by the 'install' label.
     public async Task<MessageSignatureResult> VerifyAsync(HttpContext context, string publicKeyBase64)
     {
         var signatureHeader = CombineHeaderValues(context.Request.Headers["Signature"]);
@@ -102,6 +104,7 @@ public sealed class ApproovMessageSignatureVerifier
         return MessageSignatureResult.Succeeded(canonicalBase.Payload ?? string.Empty);
     }
 
+    // Reconstructs the canonical message according to the Structured Field component list supplied by the client.
     private Task<(bool Success, string? Payload, string? Error)> BuildCanonicalMessageAsync(HttpContext context, IReadOnlyList<ParsedItem> components, IReadOnlyDictionary<string, object>? parameters)
     {
         context.Request.EnableBuffering();
@@ -135,6 +138,7 @@ public sealed class ApproovMessageSignatureVerifier
         return Task.FromResult<(bool Success, string? Payload, string? Error)>((true, payload, (string?)null));
     }
 
+    // Ensures any Content-Digest headers align with the current request body bytes.
     private async Task<(bool Success, string? Error)> VerifyContentDigestAsync(HttpContext context)
     {
         var contentDigestHeader = CombineHeaderValues(context.Request.Headers["Content-Digest"]);
@@ -183,6 +187,7 @@ public sealed class ApproovMessageSignatureVerifier
         return (true, null);
     }
 
+    // Computes the HTTP message digest value for supported algorithms.
     private static string ComputeDigest(string algorithm, byte[] body)
     {
         return algorithm.Equals("sha-512", StringComparison.OrdinalIgnoreCase)
@@ -190,6 +195,7 @@ public sealed class ApproovMessageSignatureVerifier
             : ":" + Convert.ToBase64String(SHA256.HashData(body)) + ":";
     }
 
+    // Imports the EC public key and validates the raw signature bytes against the canonical payload.
     private bool TryVerifySignature(string publicKeyBase64, ReadOnlyMemory<byte> signatureBytes, byte[] canonicalPayload)
     {
         try
@@ -213,6 +219,7 @@ public sealed class ApproovMessageSignatureVerifier
         }
     }
 
+    // Normalises multi-value Structured Field headers into a single string for parsing.
     private static string CombineHeaderValues(IReadOnlyList<string> values)
     {
         if (values.Count == 0)
@@ -239,6 +246,7 @@ public sealed class ApproovMessageSignatureVerifier
         return builder.ToString();
     }
 
+    // Extracts the 'alg' parameter from the signature input metadata.
     private static bool TryGetAlgorithm(IReadOnlyDictionary<string, object> parameters, out string? algorithm)
     {
         if (parameters.TryGetValue("alg", out var value) && value is string text)
@@ -251,6 +259,7 @@ public sealed class ApproovMessageSignatureVerifier
         return false;
     }
 
+    // Looks for unix-timestamp style parameters (created, expires, etc.).
     private static bool TryGetUnixEpoch(IReadOnlyDictionary<string, object> parameters, string key, out long value)
     {
         if (parameters.TryGetValue(key, out var parameterValue) && parameterValue is long integer)
@@ -263,6 +272,7 @@ public sealed class ApproovMessageSignatureVerifier
         return false;
     }
 
+    // Resolves each structured field component identifier into the actual HTTP request value.
     private string ResolveComponentValue(HttpContext context, string identifier, IReadOnlyDictionary<string, object>? parameters)
     {
         switch (identifier)

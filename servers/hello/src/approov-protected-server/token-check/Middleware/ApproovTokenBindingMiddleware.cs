@@ -1,11 +1,12 @@
 namespace Hello.Middleware;
 
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using Hello.Helpers;
 using Microsoft.Extensions.Options;
 
-// Confirms that the pay claim matches the configured binding header before continuing the request.
+// Confirms that the pay claim matches the configured binding header values before continuing the request.
 public class ApproovTokenBindingMiddleware
 {
     private readonly RequestDelegate _next;
@@ -27,38 +28,68 @@ public class ApproovTokenBindingMiddleware
         var tokenBindingClaim = context.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var bindingObject)
             ? bindingObject as string
             : null;
-
+        //TODO: Shall we skip if pay claim is missing? Or fail the request? How will the test without pay claim pass, will this not open a security hole?
         if (string.IsNullOrWhiteSpace(tokenBindingClaim))
         {
+            _logger.LogDebug("Approov token binding: skipping because pay claim is missing");
             await _next(context);
             return;
         }
 
-        var headerName = _appSettings.TokenBindingHeader;
-        if (string.IsNullOrWhiteSpace(headerName))
+        var headerNames = _appSettings.TokenBindingHeaders;
+        if (headerNames is null || headerNames.Count == 0)
         {
             _logger.LogDebug("Token binding claim present but no binding header configured; skipping verification.");
             await _next(context);
             return;
         }
 
-        var headerValue = context.Request.Headers[headerName].ToString().Trim();
-        if (string.IsNullOrWhiteSpace(headerValue))
+        // This method concatenates multiple header values before hashing. We mirror that
+        var concatenatedBinding = new StringBuilder();
+        var missingHeaders = new List<string>();
+
+        foreach (var headerName in headerNames)
+        {
+            var value = context.Request.Headers[headerName].ToString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                missingHeaders.Add(headerName);
+                _logger.LogDebug("Approov token binding: header {Header} missing/empty", headerName);
+                continue;
+            }
+
+            concatenatedBinding.Append(value.Trim());
+        }
+
+        if (missingHeaders.Count > 0)
         {
             _logger.LogInformation(
-                "Approov token binding requested but required header '{Header}' is missing or empty.",
-                headerName);
+                "Approov token binding requested but required header(s) '{Headers}' are missing or empty.",
+                string.Join(", ", missingHeaders));
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
         }
 
-        if (!VerifyApproovTokenBinding(headerValue, tokenBindingClaim))
+        var bindingValue = concatenatedBinding.ToString();
+
+        if (string.IsNullOrWhiteSpace(bindingValue))
         {
-            _logger.LogInformation("Invalid Approov token binding.");
+            _logger.LogInformation("Approov token binding requested but concatenated header values are empty.");
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        if (!VerifyApproovTokenBinding(bindingValue, tokenBindingClaim))
+        {
+            _logger.LogInformation(
+                "Invalid Approov token binding: expected={Expected} actual={Actual}",
+                Sha256Base64Encoded(bindingValue),
+                tokenBindingClaim);
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
 
+        _logger.LogDebug("Approov token binding: binding verified for headers {Headers}", string.Join(",", headerNames));
         context.Items[ApproovTokenContextKeys.TokenBindingVerified] = true;
         await _next(context);
     }

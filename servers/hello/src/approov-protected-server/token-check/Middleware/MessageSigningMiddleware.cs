@@ -28,6 +28,7 @@ public class MessageSigningMiddleware
             return;
         }
 
+        // The ipk claim carries the installation public key used to verify the raw HTTP message signature.
         var installationPublicKey = ExtractInstallationPublicKey(token);
         if (string.IsNullOrWhiteSpace(installationPublicKey))
         {

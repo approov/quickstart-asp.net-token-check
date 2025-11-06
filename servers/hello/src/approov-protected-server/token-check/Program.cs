@@ -1,4 +1,7 @@
 using Hello.Helpers;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 
 //////////////////////////
 // SETUP APPROOV SECRET
@@ -27,10 +30,22 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var tokenBindingHeader = DotNetEnv.Env.GetString("APPROOV_TOKEN_BINDING_HEADER");
+var signatureRequireCreated = ReadBoolean(DotNetEnv.Env.GetString("APPROOV_SIGNATURE_REQUIRE_CREATED"), true);
+var signatureRequireExpires = ReadBoolean(DotNetEnv.Env.GetString("APPROOV_SIGNATURE_REQUIRE_EXPIRES"), false);
+var signatureMaxAge = ReadTimeSpanFromSeconds(DotNetEnv.Env.GetString("APPROOV_SIGNATURE_MAX_AGE_SECONDS"));
+var signatureClockSkew = ReadTimeSpanFromSeconds(DotNetEnv.Env.GetString("APPROOV_SIGNATURE_CLOCK_SKEW_SECONDS")) ?? TimeSpan.Zero;
+var tokenBindingHeaders = ParseHeaderList(tokenBindingHeader);
 builder.Services.Configure<AppSettings>(appSettings =>
 {
     appSettings.ApproovSecretBytes = approovSecretBytes;
-    appSettings.TokenBindingHeader = tokenBindingHeader;
+    appSettings.TokenBindingHeaders = tokenBindingHeaders.ToList();
+});
+builder.Services.Configure<MessageSignatureValidationOptions>(options =>
+{
+    options.RequireCreated = signatureRequireCreated;
+    options.RequireExpires = signatureRequireExpires;
+    options.MaximumSignatureAge = signatureMaxAge;
+    options.AllowedClockSkew = signatureClockSkew;
 });
 builder.Services.AddSingleton<ApproovMessageSignatureVerifier>();
 
@@ -59,3 +74,47 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static bool ReadBoolean(string? value, bool defaultValue)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return defaultValue;
+    }
+
+    if (bool.TryParse(value, out var parsed))
+    {
+        return parsed;
+    }
+
+    return defaultValue;
+}
+
+static TimeSpan? ReadTimeSpanFromSeconds(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var seconds) && seconds >= 0)
+    {
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    return null;
+}
+
+static IList<string> ParseHeaderList(string? raw)
+{
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return new List<string>();
+    }
+
+    return raw
+        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+        .Select(value => value.Trim())
+        .Where(value => value.Length > 0)
+        .ToList();
+}

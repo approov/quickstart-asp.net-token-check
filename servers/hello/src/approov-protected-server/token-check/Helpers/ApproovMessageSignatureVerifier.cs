@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using StructuredFieldValues;
 
 // Reconstructs the HTTP message signature base and validates ECDSA P-256 signatures from the Approov SDK.
@@ -20,18 +21,35 @@ public sealed class ApproovMessageSignatureVerifier
         "sha-512"
     };
 
-    private readonly ILogger<ApproovMessageSignatureVerifier> _logger;
+    // Collates the structured field parameters that ride alongside the signature input list.
+    private sealed record SignatureMetadata(
+        string? Algorithm,
+        long? Created,
+        long? Expires,
+        string? KeyId,
+        string? Nonce,
+        string? Tag);
 
-    public ApproovMessageSignatureVerifier(ILogger<ApproovMessageSignatureVerifier> logger)
+    private readonly ILogger<ApproovMessageSignatureVerifier> _logger;
+    private readonly MessageSignatureValidationOptions _signatureOptions;
+
+    public ApproovMessageSignatureVerifier(
+        ILogger<ApproovMessageSignatureVerifier> logger,
+        IOptions<MessageSignatureValidationOptions> signatureOptions)
     {
         _logger = logger;
+        _signatureOptions = signatureOptions.Value;
     }
 
     // Entry point used by middleware to validate signatures referenced by the 'install' label.
     public async Task<MessageSignatureResult> VerifyAsync(HttpContext context, string publicKeyBase64)
     {
+        // Signature metadata is supplied via Structured Field headers that may be split across multiple header lines.
         var signatureHeader = CombineHeaderValues(context.Request.Headers["Signature"]);
         var signatureInputHeader = CombineHeaderValues(context.Request.Headers["Signature-Input"]);
+
+        _logger.LogDebug("Approov message signing: raw Signature header {Header}", signatureHeader);
+        _logger.LogDebug("Approov message signing: raw Signature-Input header {Header}", signatureInputHeader);
 
         if (string.IsNullOrWhiteSpace(signatureHeader) || string.IsNullOrWhiteSpace(signatureInputHeader))
         {
@@ -48,6 +66,12 @@ public sealed class ApproovMessageSignatureVerifier
         if (signatureInputParseError.HasValue || signatureInputDictionary is null)
         {
             return MessageSignatureResult.Failure($"Failed to parse signature-input header: {signatureInputParseError?.Message ?? "Unknown error"}");
+        }
+
+        var headerConsistency = EnsureMatchingSignatureLabels(signatureDictionary, signatureInputDictionary);
+        if (!headerConsistency.Success)
+        {
+            return MessageSignatureResult.Failure(headerConsistency.Error!);
         }
 
         if (!signatureDictionary.TryGetValue("install", out var signatureItem))
@@ -70,17 +94,33 @@ public sealed class ApproovMessageSignatureVerifier
             return MessageSignatureResult.Failure("Signature-Input entry does not contain an inner list of components");
         }
 
-        var signatureParameters = signatureInputItem.Parameters ?? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-        if (!TryGetAlgorithm(signatureParameters, out var algorithm) || !string.Equals(algorithm, "ecdsa-p256-sha256", StringComparison.OrdinalIgnoreCase))
+        // Parse and validate signature parameters such as algorithm, created and expires.
+        var metadataResult = TryExtractSignatureMetadata(signatureInputItem.Parameters);
+        if (!metadataResult.Success)
         {
-            return MessageSignatureResult.Failure($"Unsupported signature algorithm '{algorithm ?? "<missing>"}'");
+            return MessageSignatureResult.Failure(metadataResult.Error!);
         }
 
-        if (!TryGetUnixEpoch(signatureParameters, "created", out var createdUnix))
+        var metadata = metadataResult.Metadata!;
+        _logger.LogDebug(
+            "Approov message signing: metadata alg={Alg} created={Created} expires={Expires} keyId={KeyId} nonce={Nonce} tag={Tag}",
+            metadata.Algorithm,
+            metadata.Created,
+            metadata.Expires,
+            metadata.KeyId,
+            metadata.Nonce,
+            metadata.Tag);
+        if (!string.Equals(metadata.Algorithm, "ecdsa-p256-sha256", StringComparison.OrdinalIgnoreCase))
         {
-            return MessageSignatureResult.Failure("Signature missing 'created' parameter");
+            return MessageSignatureResult.Failure($"Unsupported signature algorithm '{metadata.Algorithm ?? "<missing>"}'");
         }
-        // TODO: enforce a freshness window for the 'created' timestamp to guard against replayed signatures.
+
+        // Check the created/expires timestamps according to the configured policy.
+        var timestampValidation = ValidateTimestampPolicy(metadata);
+        if (!timestampValidation.Success)
+        {
+            return MessageSignatureResult.Failure(timestampValidation.Error!);
+        }
 
         var canonicalBase = await BuildCanonicalMessageAsync(context, componentIdentifiers, signatureInputItem.Parameters);
         if (!canonicalBase.Success)
@@ -89,6 +129,7 @@ public sealed class ApproovMessageSignatureVerifier
         }
 
         var canonicalPayloadBytes = Encoding.UTF8.GetBytes(canonicalBase.Payload!);
+        _logger.LogTrace("Approov message signing: canonical payload built:\n{Payload}", canonicalBase.Payload);
 
         var contentDigestValidation = await VerifyContentDigestAsync(context);
         if (!contentDigestValidation.Success)
@@ -104,9 +145,191 @@ public sealed class ApproovMessageSignatureVerifier
         return MessageSignatureResult.Succeeded(canonicalBase.Payload ?? string.Empty);
     }
 
+    private static (bool Success, string? Error) EnsureMatchingSignatureLabels(
+        IReadOnlyDictionary<string, ParsedItem> signatureDictionary,
+        IReadOnlyDictionary<string, ParsedItem> signatureInputDictionary)
+    {
+        var signatureKeys = new HashSet<string>(signatureDictionary.Keys, StringComparer.Ordinal);
+        var inputKeys = new HashSet<string>(signatureInputDictionary.Keys, StringComparer.Ordinal);
+
+        // Both headers must expose the same set of labels so that the client cannot inject
+        // components or signatures that we never evaluate.
+        var missingInInput = signatureKeys.Except(inputKeys).FirstOrDefault();
+        if (!string.IsNullOrEmpty(missingInInput))
+        {
+            return (false, $"Signature-Input header missing '{missingInInput}' entry");
+        }
+
+        var missingInSignature = inputKeys.Except(signatureKeys).FirstOrDefault();
+        if (!string.IsNullOrEmpty(missingInSignature))
+        {
+            return (false, $"Signature header missing '{missingInSignature}' entry");
+        }
+
+        return (true, null);
+    }
+
+    private (bool Success, SignatureMetadata? Metadata, string? Error) TryExtractSignatureMetadata(IReadOnlyDictionary<string, object>? parameters)
+    {
+        if (parameters is null || parameters.Count == 0)
+        {
+            return (false, null, "Signature parameters missing 'alg' entry");
+        }
+
+        // Rejects unknown parameter keys to tighten the validation 
+        string? algorithm = null;
+        long? created = null;
+        long? expires = null;
+        string? keyId = null;
+        string? nonce = null;
+        string? tag = null;
+
+        foreach (var parameter in parameters)
+        {
+            switch (parameter.Key)
+            {
+                case "alg":
+                    if (parameter.Value is string text)
+                    {
+                        algorithm = text;
+                    }
+                    else
+                    {
+                        return (false, null, "Signature parameter 'alg' must be a string");
+                    }
+
+                    break;
+                case "created":
+                    if (!TryConvertToLong(parameter.Value, out var createdValue))
+                    {
+                        return (false, null, "Signature parameter 'created' must be an integer");
+                    }
+
+                    created = createdValue;
+                    break;
+                case "expires":
+                    if (!TryConvertToLong(parameter.Value, out var expiresValue))
+                    {
+                        return (false, null, "Signature parameter 'expires' must be an integer");
+                    }
+
+                    expires = expiresValue;
+                    break;
+                case "keyid":
+                    if (parameter.Value is string keyIdValue)
+                    {
+                        keyId = keyIdValue;
+                        break;
+                    }
+
+                    return (false, null, "Signature parameter 'keyid' must be a string");
+                case "nonce":
+                    if (parameter.Value is string nonceValue)
+                    {
+                        nonce = nonceValue;
+                        break;
+                    }
+
+                    return (false, null, "Signature parameter 'nonce' must be a string");
+                case "tag":
+                    if (parameter.Value is string tagValue)
+                    {
+                        tag = tagValue;
+                        break;
+                    }
+
+                    return (false, null, "Signature parameter 'tag' must be a string");
+                default:
+                    return (false, null, $"Unsupported signature parameter '{parameter.Key}'");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(algorithm))
+        {
+            return (false, null, "Signature missing 'alg' parameter");
+        }
+
+        return (true, new SignatureMetadata(algorithm, created, expires, keyId, nonce, tag), null);
+    }
+
+    private (bool Success, string? Error) ValidateTimestampPolicy(SignatureMetadata metadata)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        if (_signatureOptions.RequireCreated && !metadata.Created.HasValue)
+        {
+            _logger.LogDebug("Approov message signing: missing created timestamp");
+            return (false, "Signature missing 'created' parameter");
+        }
+
+        if (metadata.Created.HasValue)
+        {
+            // Apply both freshness checks and future drift tolerance to the created timestamp.
+            var createdInstant = DateTimeOffset.FromUnixTimeSeconds(metadata.Created.Value);
+            var freshnessWindow = _signatureOptions.MaximumSignatureAge;
+            var skew = _signatureOptions.AllowedClockSkew;
+
+            if (freshnessWindow.HasValue && createdInstant < now - freshnessWindow.Value - skew)
+            {
+                _logger.LogDebug("Approov message signing: created timestamp {Created} is stale compared to window {Window}s", createdInstant.ToUnixTimeSeconds(), freshnessWindow.Value.TotalSeconds);
+                return (false, "Signature 'created' timestamp is older than the allowed freshness window");
+            }
+
+            if (createdInstant > now + skew)
+            {
+                _logger.LogDebug("Approov message signing: created timestamp {Created} ahead of server time {Now}", createdInstant.ToUnixTimeSeconds(), now.ToUnixTimeSeconds());
+                return (false, "Signature 'created' timestamp is in the future");
+            }
+        }
+
+        if (_signatureOptions.RequireExpires && !metadata.Expires.HasValue)
+        {
+            _logger.LogDebug("Approov message signing: missing expires timestamp");
+            return (false, "Signature missing 'expires' parameter");
+        }
+
+        if (metadata.Expires.HasValue)
+        {
+            var expiresInstant = DateTimeOffset.FromUnixTimeSeconds(metadata.Expires.Value);
+            if (expiresInstant + _signatureOptions.AllowedClockSkew < now)
+            {
+                _logger.LogDebug("Approov message signing: expires timestamp {Expires} has elapsed (now {Now})", expiresInstant.ToUnixTimeSeconds(), now.ToUnixTimeSeconds());
+                return (false, "Signature has expired");
+            }
+        }
+
+        if (metadata.Created.HasValue && metadata.Expires.HasValue && metadata.Expires.Value < metadata.Created.Value)
+        {
+            _logger.LogDebug("Approov message signing: expires {Expires} precedes created {Created}", metadata.Expires.Value, metadata.Created.Value);
+            return (false, "Signature 'expires' parameter precedes the 'created' timestamp");
+        }
+
+        return (true, null);
+    }
+
+    private static bool TryConvertToLong(object value, out long result)
+    {
+        switch (value)
+        {
+            case long longValue:
+                result = longValue;
+                return true;
+            case int intValue:
+                result = intValue;
+                return true;
+            case short shortValue:
+                result = shortValue;
+                return true;
+            default:
+                result = default;
+                return false;
+        }
+    }
+
     // Reconstructs the canonical message according to the Structured Field component list supplied by the client.
     private Task<(bool Success, string? Payload, string? Error)> BuildCanonicalMessageAsync(HttpContext context, IReadOnlyList<ParsedItem> components, IReadOnlyDictionary<string, object>? parameters)
     {
+        // Allow multiple reads of the body and request metadata while we rebuild the canonical form.
         context.Request.EnableBuffering();
 
         var lines = new List<string>();
@@ -124,9 +347,12 @@ public sealed class ApproovMessageSignatureVerifier
             }
             catch (MessageSignatureException ex)
             {
+                _logger.LogDebug("Approov message signing: failed to resolve component {Identifier} - {Error}", identifier, ex.Message);
                 return Task.FromResult<(bool Success, string? Payload, string? Error)>((false, null, ex.Message));
             }
 
+            _logger.LogTrace("Approov message signing: component {Identifier} -> {Value}", identifier, value);
+            // Serialise the Structured Field token back into its textual label (e.g. "@method").
             var label = StructuredFieldFormatter.SerializeItem(component);
             lines.Add($"{label}: {value}");
         }
@@ -177,6 +403,11 @@ public sealed class ApproovMessageSignatureVerifier
                 : ":" + Convert.ToBase64String(((ReadOnlyMemory<byte>)entry.Value.Value!).ToArray()) + ":";
 
             var actualDigest = ComputeDigest(entry.Key, bodyBytes);
+            _logger.LogTrace(
+                "Approov message signing: content-digest check algorithm={Algorithm} expected={Expected} actual={Actual}",
+                entry.Key,
+                expectedDigest,
+                actualDigest);
 
             if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(expectedDigest), Encoding.ASCII.GetBytes(actualDigest)))
             {
@@ -205,7 +436,13 @@ public sealed class ApproovMessageSignatureVerifier
             ecdsa.ImportSubjectPublicKeyInfo(publicKey, out _);
 
             var signature = signatureBytes.ToArray();
-            return ecdsa.VerifyData(canonicalPayload, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            var verified = ecdsa.VerifyData(canonicalPayload, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            if (!verified)
+            {
+                _logger.LogDebug("Approov message signing: signature verification failed for payload length {Length}", canonicalPayload.Length);
+            }
+
+            return verified;
         }
         catch (FormatException ex)
         {
@@ -244,32 +481,6 @@ public sealed class ApproovMessageSignatureVerifier
         }
 
         return builder.ToString();
-    }
-
-    // Extracts the 'alg' parameter from the signature input metadata.
-    private static bool TryGetAlgorithm(IReadOnlyDictionary<string, object> parameters, out string? algorithm)
-    {
-        if (parameters.TryGetValue("alg", out var value) && value is string text)
-        {
-            algorithm = text;
-            return true;
-        }
-
-        algorithm = null;
-        return false;
-    }
-
-    // Looks for unix-timestamp style parameters (created, expires, etc.).
-    private static bool TryGetUnixEpoch(IReadOnlyDictionary<string, object> parameters, string key, out long value)
-    {
-        if (parameters.TryGetValue(key, out var parameterValue) && parameterValue is long integer)
-        {
-            value = integer;
-            return true;
-        }
-
-        value = default;
-        return false;
     }
 
     // Resolves each structured field component identifier into the actual HTTP request value.

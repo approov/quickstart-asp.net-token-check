@@ -28,7 +28,7 @@ public class ApproovTokenMiddleware
             await _next(context);
             return;
         }
-
+        
         var token = context.Request.Headers["Approov-Token"].FirstOrDefault();
 
         if (token == null) {
@@ -69,22 +69,26 @@ public class ApproovTokenMiddleware
                 context.Items[ApproovTokenContextKeys.TokenExpiry] = jwtToken.ValidTo;
 
                 var claims = jwtToken.Claims;
+                // Extract device id
                 var deviceId = claims.FirstOrDefault(c => string.Equals(c.Type, "did", StringComparison.OrdinalIgnoreCase))?.Value;
                 if (!string.IsNullOrWhiteSpace(deviceId))
                 {
                     context.Items[ApproovTokenContextKeys.DeviceId] = deviceId;
+                    _logger.LogDebug("Approov token: extracted device id");
                 }
-
+                // Extract token binding (pay) claim for token binding verification
                 var payClaim = claims.FirstOrDefault(c => string.Equals(c.Type, "pay", StringComparison.OrdinalIgnoreCase))?.Value;
                 if (!string.IsNullOrWhiteSpace(payClaim))
                 {
                     context.Items[ApproovTokenContextKeys.TokenBinding] = payClaim;
+                    _logger.LogDebug("Approov token: extracted pay claim for token binding");
                 }
-
+                // Extract installation public key (ipk) claim
                 var installationPublicKey = claims.FirstOrDefault(c => string.Equals(c.Type, "ipk", StringComparison.OrdinalIgnoreCase))?.Value;
                 if (!string.IsNullOrWhiteSpace(installationPublicKey))
                 {
                     context.Items[ApproovTokenContextKeys.InstallationPublicKey] = installationPublicKey;
+                    _logger.LogDebug("Approov token: extracted installation public key");
                 }
             }
 
@@ -107,7 +111,7 @@ public class ApproovTokenMiddleware
         }
     }
 
-    // Skips token enforcement for internal test endpoints that operate without Approov headers.
+    // Skips token enforcement for internal test endpoints from /test-scripts.
     private static bool IsBypassedPath(string? path)
     {
         if (string.IsNullOrEmpty(path))

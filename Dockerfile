@@ -1,4 +1,4 @@
-ARG TAG=6.0
+ARG TAG=8.0
 
 FROM mcr.microsoft.com/dotnet/sdk:${TAG}
 

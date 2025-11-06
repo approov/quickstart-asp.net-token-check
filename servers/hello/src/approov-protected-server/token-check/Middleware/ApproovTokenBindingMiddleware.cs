@@ -28,7 +28,6 @@ public class ApproovTokenBindingMiddleware
         var tokenBindingClaim = context.Items.TryGetValue(ApproovTokenContextKeys.TokenBinding, out var bindingObject)
             ? bindingObject as string
             : null;
-        //TODO: Shall we skip if pay claim is missing? Or fail the request? How will the test without pay claim pass, will this not open a security hole?
         if (string.IsNullOrWhiteSpace(tokenBindingClaim))
         {
             _logger.LogDebug("Approov token binding: skipping because pay claim is missing");

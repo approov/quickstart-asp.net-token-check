@@ -79,12 +79,12 @@ public class ApproovController : ControllerBase
             return Content("Failed: failed to create public key", "text/plain");
         }
     }
-/* 
- Sending cryptographic values across an insecure network without encrypting them is extremely unsafe, 
- as anyone that intercepts these values can then decrypt your data. This endpoint exposes private keys to interception,
- logging by web servers and proxies, and storage in browser history.
- Make sure this endpoint is only used in a secure testing environment and never in production.
- */
+    /* 
+    Sending cryptographic values across an insecure network without encrypting them is extremely unsafe, 
+    as anyone that intercepts these values can then decrypt your data. This endpoint exposes private keys to interception,
+    logging by web servers and proxies, and storage in browser history.
+    Make sure this endpoint is only used in a secure testing environment and never in production.
+    */
     [HttpGet("/ipk_message_sign_test")]
     // Signs an arbitrary message with a caller-supplied EC private key to help generate deterministic test vectors.
     public IActionResult IpkMessageSignTest()

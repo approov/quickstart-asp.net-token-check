@@ -6,20 +6,19 @@
 
 Each Quickstart has at their end a dedicated section for testing, that will walk you through the necessary steps to use the Approov CLI to generate valid and invalid tokens to test your Approov integration without the need to rely on the genuine mobile app(s) using your backend.
 
-* [Approov Token](/docs/APPROOV_TOKEN_QUICKSTART.md#test-your-approov-integration) test examples.
-* [Approov Token Binding](/docs/APPROOV_TOKEN_BINDING_QUICKSTART.md#test-your-approov-integration) test examples.
+* [Approov Token](/docs/APPROOV_TOKEN_QUICKSTART.md#testing) test examples.
+* [Approov Token Binding](/docs/APPROOV_TOKEN_BINDING_QUICKSTART.md#testing) test examples.
+* [Approov Message Signing](/docs/APPROOV_MESSAGE_SIGNING_QUICKSTART.md#testing) test examples.
 
-### Testing with Postman
+### Testing with Scripts and Tools
 
-A ready-to-use Postman collection can be found [here](https://raw.githubusercontent.com/approov/postman-collections/master/quickstarts/hello-world/hello-world.postman_collection.json). It contains a comprehensive set of example requests to send to the backend server for testing. The collection contains requests with valid and invalid Approov tokens, and with and without token binding.
-
-### Testing with Curl
-
-An alternative to the Postman collection is to use cURL to make the API requests. Check some examples [here](https://github.com/approov/postman-collections/blob/master/quickstarts/hello-world/hello-world.postman_curl_requests_examples.md).
+* **Shell scripts** - `./test-scripts/request_tests_approov_msg.sh` executes a suite of token, token binding, and message signing requests. `./test-scripts/request_tests_sfv.sh` exercises the structured field helpers.
+* **Postman** - a ready-to-use Postman collection can be found [here](https://raw.githubusercontent.com/approov/postman-collections/master/quickstarts/hello-world/hello-world.postman_collection.json). It contains a comprehensive set of example requests with and without token binding.
+* **cURL** - example curl commands are available [here](https://github.com/approov/postman-collections/blob/master/quickstarts/hello-world/hello-world.postman_curl_requests_examples.md).
 
 ### The Dummy Secret
 
-The valid Approov tokens in the Postman collection and cURL requests examples were signed with a dummy secret that was generated with `openssl rand -base64 64 | tr -d '\n'; echo`, therefore not a production secret retrieved with `approov secret -get base64`, thus in order to use it you need to set the `APPROOV_BASE64_SECRET`, in the `.env` file for each [Approov integration example](/src/approov-protected-server), to the following value: `h+CX0tOzdAAR9l15bWAqvq7w9olk66daIH+Xk+IAHhVVHszjDzeGobzNnqyRze3lw/WVyWrc2gZfh3XXfBOmww==`.
+The valid Approov tokens in the Postman collection and cURL requests examples were signed with a dummy secret that was generated with `openssl rand -base64 64 | tr -d '\n'; echo`, therefore not a production secret retrieved with `approov secret -get base64`, thus in order to use it you need to set the `APPROOV_BASE64_SECRET`, in the `.env` file for each [Approov integration example](/servers/hello/src/approov-protected-server/token-check), to the following value: `h+CX0tOzdAAR9l15bWAqvq7w9olk66daIH+Xk+IAHhVVHszjDzeGobzNnqyRze3lw/WVyWrc2gZfh3XXfBOmww==`.
 
 
 ## Issues
@@ -31,7 +30,7 @@ If you find any issue while following our instructions then just report it [here
 
 If you wish to explore the Approov solution in more depth, then why not try one of the following links as a jumping off point:
 
-* [Approov Free Trial](https://approov.io/signup)(no credit card needed)
+* [Approov Free Trial](https://approov.io/signup) (no credit card needed)
 * [Approov Get Started](https://approov.io/product/demo)
 * [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
 * [Approov Docs](https://approov.io/docs)

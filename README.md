@@ -1,236 +1,87 @@
-# Approov QuickStart - ASP.Net Token Check
+# Approov QuickStart - ASP.NET Token Check
 
-[Approov](https://approov.io) is an API security solution used to verify that requests received by your backend services originate from trusted versions of your mobile apps.
+[Approov](https://approov.io) validates that requests reaching your backend originate from trusted builds of your mobile apps. This quickstart demonstrates how to enforce Approov tokens in ASP.NET 8, optionally add [token binding](https://approov.io/docs/latest/approov-usage-documentation/#token-binding), and verify [HTTP message signatures](https://approov.io/docs/latest/approov-usage-documentation/#message-signing) produced by the Approov SDK.
 
-This repo implements the Approov server-side request verification code for the ASP.Net framework, which performs the verification check before allowing valid traffic to be processed by the API endpoint.
+The sample backend that accompanies this guide lives at `servers/hello/src/approov-protected-server/token-check`. It exposes minimal endpoints that illustrate each protection layer:
+- `/token` returns `Good Token` after validating the Approov token.
+- `/token_binding` echoes `Good Token Binding` when the configured headers hash to the `pay` claim.
+- `/ipk_message_sign_test` and `/ipk_test` generate deterministic signatures and validate installation public keys for local testing.
 
-
-## Approov Integration Quickstart
-
-The quickstart was tested with the following Operating Systems:
-
-* Ubuntu 20.04
-* MacOS Big Sur
-* Windows 10 WSL2 - Ubuntu 20.04
-
-### Running the sample APIs without Docker
-
-The repository now ships with a helper script that launches the demo servers directly with the local .NET SDK. From the repository root run:
-
-```bash
-./scripts/run-local.sh all
-```
-
-This starts the unprotected sample on port `8001` and the consolidated Approov-protected sample on port `8111`. Press `Ctrl+C` to stop them. You can also launch an individual backend, for example `./scripts/run-local.sh token-check`. The script will automatically create a `.env` file from `.env.example` for the Approov-protected project if one is not already present.
-
-First, setup the [Approov CLI](https://approov.io/docs/latest/approov-installation/index.html#initializing-the-approov-cli).
-
-Now, register the API domain for which Approov will issues tokens:
-
-```bash
-approov api -add api.example.com
-```
-
-> **NOTE:** By default a symmetric key (HS256) is used to sign the Approov token on a valid attestation of the mobile app for each API domain it's added with the Approov CLI, so that all APIs will share the same secret and the backend needs to take care to keep this secret secure.
->
-> A more secure alternative is to use asymmetric keys (RS256 or others) that allows for a different keyset to be used on each API domain and for the Approov token to be verified with a public key that can only verify, but not sign, Approov tokens.
->
-> To implement the asymmetric key you need to change from using the symmetric HS256 algorithm to an asymmetric algorithm, for example RS256, that requires you to first [add a new key](https://approov.io/docs/latest/approov-usage-documentation/#adding-a-new-key), and then specify it when [adding each API domain](https://approov.io/docs/latest/approov-usage-documentation/#keyset-key-api-addition). Please visit [Managing Key Sets](https://approov.io/docs/latest/approov-usage-documentation/#managing-key-sets) on the Approov documentation for more details.
-
-Next, enable your Approov `admin` role with:
-
-```bash
-eval `approov role admin`
-````
-
-For the Windows powershell:
-
-```bash
-set APPROOV_ROLE=admin:___YOUR_APPROOV_ACCOUNT_NAME_HERE___
-```
-
-Now, get your Approov Secret with the [Approov CLI](https://approov.io/docs/latest/approov-installation/index.html#initializing-the-approov-cli):
-
-```bash
-approov secret -get base64
-```
-
-Next, add the [Approov secret](https://approov.io/docs/latest/approov-usage-documentation/#account-secret-key-export) to your project `.env` file:
-
-```env
-APPROOV_BASE64_SECRET=approov_base64_secret_here
-```
-
-Now, add to your `appname.csproj` file the dependencies:
-
-```xml
-<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="6.0.0" />
-<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.15.0" />
-
-<!-- Optional in the case you prefer to load the secret with another approach -->
-<PackageReference Include="DotNetEnv" Version="2.3.0" />
-```
-
-Next, in `Program.cs` load the secrets from the `.env` file and inject it into `AppSettiongs`:
-
-```c#
-using AppName.Helpers;
-
-DotNetEnv.Env.Load();
-
-var approovBase64Secret = DotNetEnv.Env.GetString("APPROOV_BASE64_SECRET");
-
-if(approovBase64Secret == null) {
-    throw new Exception("Missing the env var APPROOV_BASE64_SECRET or its empty.");
-}
-
-var approovSecretBytes = System.Convert.FromBase64String(approovBase64Secret);
-
-var builder = WebApplication.CreateBuilder(args);
-builder.Services.Configure<AppSettings>(appSettings => {
-    appSettings.ApproovSecretBytes = approovSecretBytes;
-});
-
-// ... omitted boilerplate and/or your code
-
-var app = builder.Build();
-
-// Needs to be the first. No need to process other stuff in the request if the
-// request isn't deemed as trustworthy by having a valid Approov token that
-// hasn't expired yet.
-app.UseMiddleware<AppName.Middleware.ApproovTokenMiddleware>();
-
-// ... omitted boilerplate and/or your code
-```
-
-Now, let's add the class to load the app settings:
-
-```c#
-namespace AppName.Helpers;
-
-public class AppSettings
-{
-    public byte[] ?ApproovSecretBytes { get; set; }
-}
-```
-
-Next, add the `ApproovTokenMiddleware` class to your project:
-
-```c#
-namespace AppName.Middleware;
-
-using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Text;
-using AppName.Helpers;
-using System.Security.Claims;
-
-public class ApproovTokenMiddleware
-{
-    private readonly RequestDelegate _next;
-    private readonly AppSettings _appSettings;
-    private readonly ILogger<ApproovTokenMiddleware> _logger;
-
-    public ApproovTokenMiddleware(RequestDelegate next, IOptions<AppSettings> appSettings, ILogger<ApproovTokenMiddleware> logger)
-    {
-        _next = next;
-        _appSettings = appSettings.Value;
-        _logger = logger;
-    }
-
-    public async Task Invoke(HttpContext context)
-    {
-        var token = context.Request.Headers["Approov-Token"].FirstOrDefault();
-
-        if (token == null) {
-            _logger.LogInformation("Missing Approov-Token header.");
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            return;
-        }
-
-        if (verifyApproovToken(context, token)) {
-            await _next(context);
-            return;
-        }
-
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return;
-    }
-
-    private bool verifyApproovToken(HttpContext context, string token)
-    {
-        try
-        {
-            var tokenHandler = new JwtSecurityTokenHandler();
-
-            tokenHandler.ValidateToken(token, new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(_appSettings.ApproovSecretBytes),
-                ValidateIssuer = false,
-                ValidateAudience = false,
-                // set clockskew to zero so tokens expire exactly at token expiration time (instead of 5 minutes later)
-                ClockSkew = TimeSpan.Zero
-            }, out SecurityToken validatedToken);
-
-            var jwtToken = (JwtSecurityToken)validatedToken;
-            var claims = jwtToken.Claims;
-
-            var payClaim = claims.FirstOrDefault(x => x.Type == "pay")?.Value;
-
-            context.Items["ApproovTokenBinding"] = payClaim;
-
-            return true;
-        } catch (SecurityTokenException exception) {
-            _logger.LogInformation(exception.Message);
-            return false;
-        } catch (Exception exception) {
-            _logger.LogInformation(exception.Message);
-            return false;
-        }
-    }
-}
-```
-
-> **NOTE:** When the Approov token validation fails we return a `401` with an empty body, because we don't want to give clues to an attacker about the reason the request failed, and you can go even further by returning a `400`.
-
-Not enough details in the bare bones quickstart? No worries, check the [detailed quickstarts](QUICKSTARTS.md) that contain a more comprehensive set of instructions, including how to test the Approov integration.
+An unprotected reference backend lives at `servers/hello/src/unprotected-server` so you can compare behaviour with and without Approov.
 
 
-## More Information
+## Prerequisites
 
-* [Approov Overview](OVERVIEW.md)
-* [Detailed Quickstarts](QUICKSTARTS.md)
-* [Examples](EXAMPLES.md)
-* [Testing](TESTING.md)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download) for building/running the samples.
+- [Approov CLI](https://approov.io/docs/latest/approov-installation/#approov-tool) with an account that can manage API domains and secrets.
+- An API domain registered with Approov: `approov api -add your.api.domain.com`.
+- The account secret exported in base64 form. Enable the admin role (`eval \`approov role admin\`` on Unix shells or `set APPROOV_ROLE=admin:<approov-account>` in PowerShell) and run `approov secret -get base64`.
 
-### System Clock
+When using symmetric signing (HS256) you must keep the secret confidential. Approov also supports asymmetric keys; see [Managing Key Sets](https://approov.io/docs/latest/approov-usage-documentation/#managing-key-sets) for guidance.
 
-In order to correctly check for the expiration times of the Approov tokens is very important that the backend server is synchronizing automatically the system clock over the network with an authoritative time source. In Linux this is usually done with a NTP server.
+
+## Getting Started
+
+1. Copy the environment template and add your secret:
+   ```bash
+   cp servers/hello/src/approov-protected-server/token-check/.env.example \
+      servers/hello/src/approov-protected-server/token-check/.env
+   ```
+   Edit `.env` and set `APPROOV_BASE64_SECRET` to the value returned by `approov secret -get base64`. The optional variables in that file enable token binding and message signature policy enforcement.
+
+2. Run the sample APIs with the local .NET SDK:
+   ```bash
+   ./scripts/run-local.sh all
+   ```
+   The script launches the unprotected server on `8001` and the Approov-protected server on `8111`. Press `Ctrl+C` to stop both. Launch a single backend with `./scripts/run-local.sh token-check`.
+
+3. Exercise the protections using the helper scripts:
+   ```bash
+   ./test-scripts/request_tests_approov_msg.sh 8111
+   ./test-scripts/request_tests_sfv.sh 8111
+   ```
+   These scripts cover token validation, token binding, canonical message reconstruction, and signature verification.
+
+
+## Implementing Approov in Your Project
+
+Follow the detailed quickstarts to bring the same protections into your own API:
+
+- [Token validation quickstart](docs/APPROOV_TOKEN_QUICKSTART.md) - integrate the middleware that enforces Approov tokens.
+- [Token binding quickstart](docs/APPROOV_TOKEN_BINDING_QUICKSTART.md) - bind Approov tokens to request headers such as `Authorization`.
+- [Message signing quickstart](docs/APPROOV_MESSAGE_SIGNING_QUICKSTART.md) - verify HTTP message signatures using the installation public key included in the Approov token.
+
+Each guide includes package requirements, configuration snippets, and testing instructions that match the code in this repository.
+
+
+## Testing and Examples
+
+- [TESTING.md](TESTING.md) summarises manual and automated test options, including how to use the published dummy secret for local verification.
+- [EXAMPLES.md](EXAMPLES.md) explains the sample server layout and optional Docker workflow.
+- Run unit tests for the helper components with `dotnet test tests/Hello.Tests/Hello.Tests.csproj`.
+
+
+## Additional Resources
+
+- [Approov Overview](OVERVIEW.md)
+- [Approov Quickstarts](QUICKSTARTS.md)
+- [Approov Integration Examples](EXAMPLES.md)
+
+Keep the backend clock synchronised with an authoritative time source (for example via NTP). Accurate clocks are essential when checking JWT expiry times and HTTP message signature lifetimes.
 
 
 ## Issues
 
-If you find any issue while following our instructions then just report it [here](https://github.com/approov/quickstart-asp.net-token-check/issues), with the steps to reproduce it, and we will sort it out and/or guide you to the correct path.
-
-
-[TOC](#toc---table-of-contents)
+Report problems or request enhancements via [GitHub issues](https://github.com/approov/quickstart-asp.net-token-check/issues). Include reproduction steps so we can assist quickly.
 
 
 ## Useful Links
 
-If you wish to explore the Approov solution in more depth, then why not try one of the following links as a jumping off point:
-
-* [Approov Free Trial](https://approov.io/signup)(no credit card needed)
-* [Approov Get Started](https://approov.io/product/demo)
-* [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
-* [Approov Docs](https://approov.io/docs)
-* [Approov Blog](https://approov.io/blog/)
-* [Approov Resources](https://approov.io/resource/)
-* [Approov Customer Stories](https://approov.io/customer)
-* [Approov Support](https://approov.io/contact)
-* [About Us](https://approov.io/company)
-* [Contact Us](https://approov.io/contact)
-
-[TOC](#toc---table-of-contents)
+- [Approov Free Trial](https://approov.io/signup) (no credit card needed)
+- [Approov Product Tour](https://approov.io/product/demo)
+- [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
+- [Approov Docs](https://approov.io/docs)
+- [Approov Blog](https://approov.io/blog/)
+- [Approov Resources](https://approov.io/resource/)
+- [Approov Customer Stories](https://approov.io/customer)
+- [Approov Support](https://approov.io/contact)

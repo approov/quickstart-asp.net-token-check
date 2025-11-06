@@ -122,6 +122,7 @@ public class ApproovController : ControllerBase
 
     [HttpGet("/sfv_test")]
     // Validates HTTP Structured Field parsing and serialization against the caller-provided sample.
+    // Relevant only for testing the StructuredFieldValues library itself using /test-scripts/request_tests_sfv.sh
     public IActionResult StructuredFieldTest()
     {
         var sfvType = Request.Headers["sfvt"].FirstOrDefault();
@@ -140,7 +141,7 @@ public class ApproovController : ControllerBase
         switch (sfvType)
         {
             case "ITEM":
-                error = SfvParser.ParseItem(sfvHeader, out var item);
+                error = SfvParser.ParseItem(sfvHeader, out var item); // TODO: This does fail for "Test inner list 1.." with error invalid discriminator.. Issue with the library? 
                 if (error.HasValue)
                 {
             return StructuredFieldFailure(error.Value.Message);

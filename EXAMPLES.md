@@ -14,6 +14,7 @@ To learn more about each Hello server example you need to read the README for ea
 * [Unprotected Server](/servers/hello/src/unprotected-server)
 * [Approov Protected Server](/servers/hello/src/approov-protected-server/token-check)
 
+The repository also includes helper scripts in `/test-scripts` that exercise token validation, token binding, message signing, and Structured Field parsing against the protected server.
 
 ## Setup Environment
 
@@ -23,7 +24,7 @@ Do not forget to properly setup the `.env` file in the root of the Approov prote
 cp servers/hello/src/approov-protected-server/token-check/.env.example servers/hello/src/approov-protected-server/token-check/.env
 ```
 
-Edit the file and add the [dummy secret](/TESTING.md#the-dummy-secret) to it in order to be able to test the Approov integration with the provided [Postman collection](https://github.com/approov/postman-collections/blob/master/quickstarts/hello-world/hello-world.postman_curl_requests_examples.md).
+Edit the file and add the [dummy secret](/TESTING.md#the-dummy-secret) to it in order to be able to test the Approov integration with the provided [Postman collection](https://github.com/approov/postman-collections/blob/master/quickstarts/hello-world/hello-world.postman_curl_requests_examples.md). Set `APPROOV_TOKEN_BINDING_HEADER` (for example `Authorization`) and tweak the optional `APPROOV_SIGNATURE_*` variables to explore token binding and message signing policies.
 
 
 ## Docker Stack
@@ -83,7 +84,7 @@ If you find any issue while following our instructions then just report it [here
 
 If you wish to explore the Approov solution in more depth, then why not try one of the following links as a jumping off point:
 
-* [Approov Free Trial](https://approov.io/signup)(no credit card needed)
+* [Approov Free Trial](https://approov.io/signup) (no credit card needed)
 * [Approov Get Started](https://approov.io/product/demo)
 * [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
 * [Approov Docs](https://approov.io/docs)

@@ -28,7 +28,7 @@ public class MessageSigningMiddleware
             return;
         }
 
-        // The ipk claim carries the installation public key used to verify the raw HTTP message signature.
+        // The ipk claim in Approov token carries the installation public key used to verify the raw HTTP message signature.
         var installationPublicKey = ExtractInstallationPublicKey(token);
         if (string.IsNullOrWhiteSpace(installationPublicKey))
         {
@@ -49,7 +49,7 @@ public class MessageSigningMiddleware
         await _next(context);
     }
 
-    // Extracts the ipk claim from the JWT without validating payload contents again.
+    // Extracts the ipk claim from the JWT token
     private static string? ExtractInstallationPublicKey(string token)
     {
         try

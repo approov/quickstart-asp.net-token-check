@@ -2,8 +2,6 @@ using Hello.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using StructuredFieldValues;
 using System.Security.Cryptography;
-using System.Text;
-using System.Collections.Generic;
 
 namespace Hello.Controllers;
 
@@ -127,7 +125,7 @@ public class ApproovController : ControllerBase
     public IActionResult StructuredFieldTest()
     {
         var sfvType = Request.Headers["sfvt"].FirstOrDefault();
-        var sfvHeader = CombineHeaderValues(Request.Headers["sfv"]);
+        var sfvHeader = StructuredFieldFormatter.CombineHeaderValues(Request.Headers["sfv"]);
 
         if (string.IsNullOrWhiteSpace(sfvType) || string.IsNullOrWhiteSpace(sfvHeader))
         {
@@ -186,31 +184,5 @@ public class ApproovController : ControllerBase
         return Content("Failed SFV roundtrip", "text/plain");
     }
 
-    // Normalizes multi-value headers into a single comma-delimited field as per HTTP header semantics.
-    private static string CombineHeaderValues(IReadOnlyList<string> values)
-    {
-        if (values.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        if (values.Count == 1)
-        {
-            return values[0].Trim();
-        }
-
-        var builder = new StringBuilder();
-        for (var i = 0; i < values.Count; i++)
-        {
-            if (i > 0)
-            {
-                builder.Append(',');
-            }
-
-            builder.Append(values[i].Trim());
-        }
-
-        return builder.ToString();
-    }
 
 }

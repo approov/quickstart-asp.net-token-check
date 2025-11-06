@@ -45,8 +45,8 @@ public sealed class ApproovMessageSignatureVerifier
     public async Task<MessageSignatureResult> VerifyAsync(HttpContext context, string publicKeyBase64)
     {
         // Signature metadata is supplied via Structured Field headers that may be split across multiple header lines.
-        var signatureHeader = CombineHeaderValues(context.Request.Headers["Signature"]);
-        var signatureInputHeader = CombineHeaderValues(context.Request.Headers["Signature-Input"]);
+        var signatureHeader = StructuredFieldFormatter.CombineHeaderValues(context.Request.Headers["Signature"]);
+        var signatureInputHeader = StructuredFieldFormatter.CombineHeaderValues(context.Request.Headers["Signature-Input"]);
 
         _logger.LogDebug("Approov message signing: raw Signature header {Header}", signatureHeader);
         _logger.LogDebug("Approov message signing: raw Signature-Input header {Header}", signatureInputHeader);
@@ -367,7 +367,7 @@ public sealed class ApproovMessageSignatureVerifier
     // Ensures any Content-Digest headers align with the current request body bytes.
     private async Task<(bool Success, string? Error)> VerifyContentDigestAsync(HttpContext context)
     {
-        var contentDigestHeader = CombineHeaderValues(context.Request.Headers["Content-Digest"]);
+        var contentDigestHeader = StructuredFieldFormatter.CombineHeaderValues(context.Request.Headers["Content-Digest"]);
         if (string.IsNullOrWhiteSpace(contentDigestHeader))
         {
             return (true, null);
@@ -456,33 +456,6 @@ public sealed class ApproovMessageSignatureVerifier
         }
     }
 
-    // Normalises multi-value Structured Field headers into a single string for parsing.
-    private static string CombineHeaderValues(IReadOnlyList<string> values)
-    {
-        if (values.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        if (values.Count == 1)
-        {
-            return values[0].Trim();
-        }
-
-        var builder = new StringBuilder();
-        for (var i = 0; i < values.Count; i++)
-        {
-            if (i > 0)
-            {
-                builder.Append(',');
-            }
-
-            builder.Append(values[i].Trim());
-        }
-
-        return builder.ToString();
-    }
-
     // Resolves each structured field component identifier into the actual HTTP request value.
     private string ResolveComponentValue(HttpContext context, string identifier, IReadOnlyDictionary<string, object>? parameters)
     {
@@ -554,7 +527,7 @@ public sealed class ApproovMessageSignatureVerifier
 
         if (parameters is null || parameters.Count == 0)
         {
-            return CombineHeaderValues(values);
+            return StructuredFieldFormatter.CombineHeaderValues(values);
         }
 
         if (parameters.TryGetValue("sf", out var sfValue) && sfValue is bool sf && sf)
@@ -564,7 +537,7 @@ public sealed class ApproovMessageSignatureVerifier
 
         if (parameters.TryGetValue("key", out var keyValue) && keyValue is string key)
         {
-            var raw = CombineHeaderValues(values);
+            var raw = StructuredFieldFormatter.CombineHeaderValues(values);
             var parseError = SfvParser.ParseDictionary(raw, out var dictionary);
             if (parseError.HasValue || dictionary is null)
             {
@@ -579,12 +552,12 @@ public sealed class ApproovMessageSignatureVerifier
             return StructuredFieldFormatter.SerializeItem(item);
         }
 
-        return CombineHeaderValues(values);
+        return StructuredFieldFormatter.CombineHeaderValues(values);
     }
 
     private static string SerializeStructuredFieldHeader(string headerName, IReadOnlyList<string> values)
     {
-        var raw = CombineHeaderValues(values);
+        var raw = StructuredFieldFormatter.CombineHeaderValues(values);
         var dictionaryError = SfvParser.ParseDictionary(raw, out var dictionary);
         if (!dictionaryError.HasValue && dictionary is not null)
         {

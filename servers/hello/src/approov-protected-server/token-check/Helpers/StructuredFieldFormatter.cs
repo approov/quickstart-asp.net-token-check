@@ -201,6 +201,33 @@ public static class StructuredFieldFormatter
         return "@" + seconds.ToString(CultureInfo.InvariantCulture);
     }
 
+    // Normalises multi-value HTTP headers into the canonical comma-delimited form.
+    public static string CombineHeaderValues(IReadOnlyList<string> values)
+    {
+        if (values.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (values.Count == 1)
+        {
+            return values[0].Trim();
+        }
+
+        var builder = new StringBuilder();
+        for (var i = 0; i < values.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(',');
+            }
+
+            builder.Append(values[i].Trim());
+        }
+
+        return builder.ToString();
+    }
+
     private static void AppendParameters(StringBuilder builder, IReadOnlyDictionary<string, object>? parameters)
     {
         if (parameters is not { Count: > 0 })

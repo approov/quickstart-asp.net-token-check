@@ -1,5 +1,7 @@
 ﻿namespace Hello.Tests;
 
+using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using Hello.Controllers;
@@ -8,6 +10,8 @@ using Hello.Middleware;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using StructuredFieldValues;
 
 public class MessageSigningVerifierTests
 {
@@ -18,13 +22,13 @@ public class MessageSigningVerifierTests
     [Fact]
     public async Task VerifyAsync_WithValidSignature_ReturnsSuccess()
     {
-        var (context, signatureInput) = BuildRequest();
-        var canonicalMessage = BuildCanonicalMessage(signatureInput);
+        var context = BuildRequest();
+        var canonicalMessage = BuildCanonicalMessage(context);
         var signature = SignCanonicalMessage(canonicalMessage);
 
         context.Request.Headers["Signature"] = $"install=:{signature}:";
 
-        var verifier = new ApproovMessageSignatureVerifier(NullLogger<ApproovMessageSignatureVerifier>.Instance);
+        var verifier = CreateVerifier();
         var result = await verifier.VerifyAsync(context, TestPublicKey);
 
         Assert.True(result.Success);
@@ -33,22 +37,24 @@ public class MessageSigningVerifierTests
     [Fact]
     public async Task VerifyAsync_WithInvalidSignature_ReturnsFailure()
     {
-        var (context, signatureInput) = BuildRequest();
-        var canonicalMessage = BuildCanonicalMessage(signatureInput);
+        var context = BuildRequest();
+        var canonicalMessage = BuildCanonicalMessage(context);
         var signature = SignCanonicalMessage(canonicalMessage);
         var tampered = signature[..^1] + (signature[^1] == 'A' ? "B" : "A");
 
         context.Request.Headers["Signature"] = $"install=:{tampered}:";
 
-        var verifier = new ApproovMessageSignatureVerifier(NullLogger<ApproovMessageSignatureVerifier>.Instance);
+        var verifier = CreateVerifier();
         var result = await verifier.VerifyAsync(context, TestPublicKey);
 
         Assert.False(result.Success);
     }
 
-    private static (DefaultHttpContext Context, string SignatureInput) BuildRequest()
+    private static DefaultHttpContext BuildRequest()
     {
-        const string signatureInput = "(\"@method\" \"approov-token\");alg=\"ecdsa-p256-sha256\";created=1744292750;expires=1999999999";
+        var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 30;
+        var expires = created + 600;
+        var signatureInput = $"(\"@method\" \"approov-token\");alg=\"ecdsa-p256-sha256\";created={created};expires={expires}";
 
         var context = new DefaultHttpContext();
         context.Request.Method = "GET";
@@ -59,17 +65,43 @@ public class MessageSigningVerifierTests
         context.Request.Headers["Approov-Token"] = ApproovToken;
         context.Request.Headers["Signature-Input"] = $"install={signatureInput}";
 
-        return (context, signatureInput);
+        return context;
     }
 
-    private static string BuildCanonicalMessage(string signatureInput)
+    private static string BuildCanonicalMessage(DefaultHttpContext context)
     {
-        var builder = new StringBuilder();
-        builder.AppendLine("\"@method\": GET");
-        builder.AppendLine($"\"approov-token\": {ApproovToken}");
-        builder.Append("\"@signature-params\": ");
-        builder.Append(signatureInput);
-        return builder.ToString();
+        var signatureInputHeader = StructuredFieldFormatter.CombineHeaderValues(context.Request.Headers["Signature-Input"]);
+        var parseError = SfvParser.ParseDictionary(signatureInputHeader, out var dictionary);
+        Assert.False(parseError.HasValue, parseError?.Message ?? "Failed to parse Signature-Input header");
+        Assert.NotNull(dictionary);
+        Assert.True(dictionary.TryGetValue("install", out var signatureInputItem));
+
+        var components = Assert.IsAssignableFrom<IReadOnlyList<ParsedItem>>(signatureInputItem.Value);
+        var lines = new List<string>();
+
+        foreach (var component in components)
+        {
+            var identifier = Assert.IsType<string>(component.Value);
+            var value = ResolveComponentValue(context, identifier);
+            var label = StructuredFieldFormatter.SerializeItem(component);
+            lines.Add($"{label}: {value}");
+        }
+
+        var signatureParams = StructuredFieldFormatter.SerializeInnerList(components, signatureInputItem.Parameters);
+        lines.Add("\"@signature-params\": " + signatureParams);
+
+        return string.Join('\n', lines);
+    }
+
+    private static string ResolveComponentValue(DefaultHttpContext context, string identifier)
+    {
+        if (identifier == "@method")
+        {
+            return context.Request.Method;
+        }
+
+        Assert.True(context.Request.Headers.TryGetValue(identifier, out var values), $"Missing header '{identifier}'");
+        return StructuredFieldFormatter.CombineHeaderValues(values);
     }
 
     private static string SignCanonicalMessage(string canonicalMessage)
@@ -78,8 +110,26 @@ public class MessageSigningVerifierTests
         using var ecdsa = ECDsa.Create();
         var privateKey = Convert.FromBase64String(TestPrivateKey);
         ecdsa.ImportECPrivateKey(privateKey, out _);
-        var signature = ecdsa.SignData(messageBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        var signature = ecdsa.SignData(
+            messageBytes,
+            HashAlgorithmName.SHA256,
+            DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
         return Convert.ToBase64String(signature);
+    }
+
+    private static ApproovMessageSignatureVerifier CreateVerifier()
+    {
+        var options = Options.Create(new MessageSignatureValidationOptions
+        {
+            RequireCreated = true,
+            RequireExpires = false,
+            MaximumSignatureAge = null,
+            AllowedClockSkew = TimeSpan.FromMinutes(5)
+        });
+
+        return new ApproovMessageSignatureVerifier(
+            NullLogger<ApproovMessageSignatureVerifier>.Instance,
+            options);
     }
 }
 
@@ -94,7 +144,7 @@ public class ControllerSmokeTests
         var result = controller.IpkTest() as ContentResult;
 
         Assert.NotNull(result);
-        Assert.Equal("No IPK header, generated keys logged", result!.Content);
+        Assert.Equal("No IPK header provided", result!.Content);
     }
 
     [Fact]

@@ -12,14 +12,14 @@ Message signing protects against tampering and replay by requiring each request 
 
 ## Overview
 
-When the Approov SDK is configured for message signing it embeds an installation public key in the `ipk` claim of the Approov token. The SDK also signs a canonical representation of the HTTP request and sends the components via the [`Signature`](https://www.rfc-editor.org/rfc/rfc9421) and `Signature-Input` headers.
+When the Approov SDK is configured for message signing it embeds an installation public key in the `ipk` claim of the Approov token. The SDK also signs a canonical representation of the HTTP request and sends the components via the `Signature` and `Signature-Input` headers, as defined by [IETF RFC 9421](https://www.rfc-editor.org/rfc/rfc9421).
 
 On the server we:
 
 1. Extract the `ipk` claim in the token middleware.
 2. Rebuild the canonical message using the component identifiers from `Signature-Input`.
 3. Verify that the supplied signature (`Signature` header) matches the canonical message using ECDSA P-256.
-4. Optionally enforce signature freshness (`created`, `expires`) and presence of a `Content-Digest` header.
+4. Optionally enforce signature freshness (`created`, `expires`) and verify the message body using the `Content-Digest` header.
 
 The full implementation is in `Helpers/ApproovMessageSignatureVerifier.cs` and `Middleware/MessageSigningMiddleware.cs`.
 
@@ -28,7 +28,7 @@ The full implementation is in `Helpers/ApproovMessageSignatureVerifier.cs` and `
 
 - Complete the [token validation](APPROOV_TOKEN_QUICKSTART.md) quickstart so the `Approov-Token` header is already enforced.
 - Approov mobile SDK configured to enable message signing and include the `ipk` claim.
-- `StructuredFieldValues` NuGet package (the sample uses version `0.7.6`) to parse RFC 8941 structured fields.
+- `StructuredFieldValues` NuGet package (the sample uses version `0.7.6`) to parse [IETF RFC 8941](https://www.rfc-editor.org/rfc/rfc8941) structured fields as referenced RFC 9421. (Note that RFC 8941 was superseded by [RFC 9651](https://www.rfc-editor.org/rfc/rfc9651) in September 2024 which added direct support for dates and added a new string type: *display strings* which supports a larger character set than the straight *string* type. These changes are strictly additive but have yet to be adopted by the NuGet package. Care should be taken to ensure both the client and the server components use a set of structured field value types that both support.)
 
 
 ## Configuration
@@ -72,7 +72,7 @@ The verifier reconstructs the canonical message, validates the metadata, and che
 - Parse the `Signature` and `Signature-Input` dictionaries with `SfvParser.ParseDictionary`, ensuring both share the same label (`install`).
 - Extract and validate the metadata parameters (algorithm, `created`, `expires`, `nonce`, `tag`) using `TryExtractSignatureMetadata`.
 - Rebuild the canonical payload via `BuildCanonicalMessageAsync`, honouring pseudo headers such as `@method` and `@target-uri`.
-- Optionally verify `Content-Digest` headers (currently supports `sha-256` and `sha-512`) so the request body cannot be swapped.
+- Optionally verify `Content-Digest` headers (currently supports `sha-256` and `sha-512`) so the request body cannot be manipulated.
 - Validate the ECDSA P-256 signature with `TryVerifySignature`, using the decoded installation public key from the Approov token.
 
 See `Helpers/ApproovMessageSignatureVerifier.cs` for the full implementation along with detailed error reporting and logging hooks.

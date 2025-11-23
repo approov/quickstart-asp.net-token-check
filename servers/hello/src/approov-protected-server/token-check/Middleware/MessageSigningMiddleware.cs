@@ -24,14 +24,21 @@ public class MessageSigningMiddleware
         var token = context.Request.Headers["Approov-Token"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(token))
         {
+            _logger.LogDebug("Message signature check skipped, no Approov token");
             await _next(context);
             return;
         }
 
-        // The ipk claim in Approov token carries the installation public key used to verify the raw HTTP message signature.
+        // The ipk claim in Approov token carries the installation public key used to verify the
+        // raw HTTP message signature.
         var installationPublicKey = ExtractInstallationPublicKey(token);
         if (string.IsNullOrWhiteSpace(installationPublicKey))
         {
+            // If the token doesn't contain the ipk claim then we cannot verify a message signature
+            // even if one is provided. (Note that the Approov failover doesn't support adding the
+            // IPK claim and so it is important not to reject requests where the ipk is
+            // unavailable)
+            _logger.LogDebug("Message signature check skipped, no extractable ipk claim");
             await _next(context);
             return;
         }
@@ -58,12 +65,10 @@ public class MessageSigningMiddleware
             var ipkClaim = jwt.Claims.FirstOrDefault(claim => string.Equals(claim.Type, "ipk", StringComparison.OrdinalIgnoreCase));
             return ipkClaim?.Value;
         }
-        catch (ArgumentException)
+        catch (Exception e)
         {
-            return null;
-        }
-        catch (Exception)
-        {
+            // log error and return null
+            _logger.LogDebug(e, "Error extracting ipk claim");
             return null;
         }
     }

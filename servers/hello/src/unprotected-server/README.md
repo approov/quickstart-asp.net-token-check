@@ -50,7 +50,7 @@ dotnet run
 Finally, you can test that it works with:
 
 ```text
-curl -iX GET 'http://localhost:8002'
+curl -iX GET 'http://localhost:8111'
 ```
 
 The response will be:

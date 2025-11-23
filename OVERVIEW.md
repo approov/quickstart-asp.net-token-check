@@ -33,8 +33,10 @@ The backend server ensures that the token supplied in the `Approov-Token` header
 
 The request is handled such that:
 
-* If the Approov Token is valid, the request is allowed to be processed by the API endpoint
-* If the Approov Token is invalid, an HTTP 401 Unauthorized response is returned
+* If the Approov Token is valid, the request is allowed to be processed by the API endpoint.
+* If the Approov Token is invalid, an HTTP 401 Unauthorized response is returned.
+* Optional [token binding](https://approov.io/docs/latest/approov-usage-documentation/#token-binding) recomputes the binding hash from headers such as `Authorization` and must match the token’s `pay` claim before the request is processed.
+* Optional [message signing](https://approov.io/docs/latest/approov-usage-documentation/#message-signing) reconstructs the canonical HTTP message and validates the signature supplied in the `Signature` / `Signature-Input` headers using the installation public key embedded in the token.
 
 You can choose to log JWT verification failures, but we left it out on purpose so that you can have the choice of how you prefer to do it and decide the right amount of information you want to log.
 
@@ -43,7 +45,7 @@ You can choose to log JWT verification failures, but we left it out on purpose s
 
 If you wish to explore the Approov solution in more depth, then why not try one of the following links as a jumping off point:
 
-* [Approov Free Trial](https://approov.io/signup)(no credit card needed)
+* [Approov Free Trial](https://approov.io/signup) (no credit card needed)
 * [Approov Get Started](https://approov.io/product/demo)
 * [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
 * [Approov Docs](https://approov.io/docs)

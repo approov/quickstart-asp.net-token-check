@@ -1,15 +1,17 @@
 # Approov Integration Quickstarts
 
-[Approov](https://approov.io) is an API security solution used to verify that requests received by your backend services originate from trusted versions of your mobile apps.
+[Approov](https://approov.io) ensures that API traffic reaching your backend originates from trusted versions of your mobile apps. This repository collects the server-side quickstarts for ASP.NET 8 and reuses a single reference implementation at `servers/hello/src/approov-protected-server/token-check`.
 
 
 ## The Quickstarts
 
-The quickstart code for the Approov backend server is split into two implementations. The first gets you up and running with basic token checking. The second uses a more advanced Approov feature, _token binding_. Token binding may be used to link the Approov token with other properties of the request, such as user authentication (more details can be found [here](https://approov.io/docs/latest/approov-usage-documentation/#token-binding)).
-* [Approov token check quickstart](/docs/APPROOV_TOKEN_QUICKSTART.md)
-* [Approov token check with token binding quickstart](/docs/APPROOV_TOKEN_BINDING_QUICKSTART.md)
+Pick the guide that matches the level of protection you want to implement:
 
-Both the quickstarts are built from the unprotected example server defined [here](servers/hello/src/unprotected-server).
+- [Approov token check](docs/APPROOV_TOKEN_QUICKSTART.md) - validate the JWT presented in the `Approov-Token` header.
+- [Approov token binding](docs/APPROOV_TOKEN_BINDING_QUICKSTART.md) - bind tokens to headers such as `Authorization` to prevent replay.
+- [Approov message signing](docs/APPROOV_MESSAGE_SIGNING_QUICKSTART.md) - verify HTTP message signatures using the installation public key (IPK).
+
+Each build upon the previous one, so start with the token quickstart before layering binding or message signing.
 
 
 ## Issues
@@ -21,13 +23,13 @@ If you find any issue while following our instructions then just report it [here
 
 If you wish to explore the Approov solution in more depth, then why not try one of the following links as a jumping off point:
 
-* [Approov Free Trial](https://approov.io/signup)(no credit card needed)
-* [Approov Get Started](https://approov.io/product/demo)
-* [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
-* [Approov Docs](https://approov.io/docs)
-* [Approov Blog](https://approov.io/blog/)
-* [Approov Resources](https://approov.io/resource/)
-* [Approov Customer Stories](https://approov.io/customer)
-* [Approov Support](https://approov.io/contact)
-* [About Us](https://approov.io/company)
-* [Contact Us](https://approov.io/contact)
+- [Approov Free Trial](https://approov.io/signup) (no credit card needed)
+- [Approov Get Started](https://approov.io/product/demo)
+- [Approov QuickStarts](https://approov.io/docs/latest/approov-integration-examples/)
+- [Approov Docs](https://approov.io/docs)
+- [Approov Blog](https://approov.io/blog/)
+- [Approov Resources](https://approov.io/resource/)
+- [Approov Customer Stories](https://approov.io/customer)
+- [Approov Support](https://approov.io/contact)
+- [About Us](https://approov.io/company)
+- [Contact Us](https://approov.io/contact)

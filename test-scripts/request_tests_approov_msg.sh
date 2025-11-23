@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Several requests to issue to a running resty container
+# Several requests to issue to a running test server
 
 BOUND_PORT="${1:-8111}"
 

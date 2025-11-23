@@ -27,7 +27,7 @@ The sample API exposes the following endpoints:
 * `/token_binding` - echoes success when the `pay` claim matches the concatenated request headers configured for binding.
 * `/ipk_test` - development helper. Without an `ipk` header it generates and logs a fresh P-256 key pair. With an `ipk` header it validates that the provided public key can be decoded.
 * `/ipk_message_sign_test` - accepts a `private-key` (base64 DER) and a `msg` (base64 canonical message) header and returns an ECDSA P-256/SHA-256 raw signature. The scripts call this to create deterministic signatures.
-* `/sfv_test` - parses and reserialises Structured Field Value headers. The OpenResty quickstart invokes this when running `request_tests_sfv.sh`.
+* `/sfv_test` - parses and reserialises Structured Field Value headers. The quickstart invokes this when running `request_tests_sfv.sh`.
 
 Approov tokens are validated by the [ApproovTokenMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenMiddleware.cs). Token binding is enforced by the [ApproovTokenBindingMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/ApproovTokenBindingMiddleware.cs), and message signing is handled by [MessageSigningMiddleware](/servers/hello/src/approov-protected-server/token-check/Middleware/MessageSigningMiddleware.cs) which shares the same canonical string construction, structured field parsing, and ECDSA verification logic.
 
